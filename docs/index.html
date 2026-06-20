@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>Italy Bike Trip</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel" class="hidden">
+  <button id="panel-close">×</button>
+  <div id="panel-media"></div>
+  <div id="panel-info"></div>
+</div>
+
+<div id="legend"></div>
+
+<div id="unknown-list" class="hidden">
+  <div id="unknown-list-header">
+    <span id="unknown-list-title"></span>
+    <button id="unknown-list-close">×</button>
+  </div>
+  <div id="unknown-list-body"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
