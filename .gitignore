@@ -4,3 +4,8 @@ _verify*/
 _v*/
 chrome-profile*/
 NVIDIA Corporation/
+
+# YouTube upload credentials - never commit
+scripts/client_secret.json
+scripts/token.json
+scripts/token.pickle

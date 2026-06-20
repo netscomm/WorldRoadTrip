@@ -184,6 +184,26 @@ html, body {
   color: #fff;
   text-shadow: 0 0 2px #000, 0 0 2px #000;
   box-sizing: border-box;
+  position: relative;
+}
+
+.youtube-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: #ff0000;
+  color: #fff;
+  font-size: 6px;
+  line-height: 9px;
+  text-align: center;
+  text-shadow: none;
+}
+
+.youtube-btn-row {
+  margin-top: 6px;
 }
 
 #legend .unknown-toggle {

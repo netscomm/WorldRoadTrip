@@ -1,3 +1,20 @@
+const UPLOAD_SERVER = 'http://localhost:8765';
+const forceLocalSet = new Set();
+
+function fileUrlToWindowsPath(fileUrl) {
+  let p = fileUrl.replace(/^file:\/\/\//, '');
+  p = decodeURIComponent(p);
+  return p.replace(/\//g, '\\');
+}
+
+function getBasename(media) {
+  return fileUrlToWindowsPath(media.path).split('\\').pop();
+}
+
+MEDIA.forEach((media) => {
+  media.youtubeId = (typeof YOUTUBE_MAP !== 'undefined' && YOUTUBE_MAP[getBasename(media)]) || null;
+});
+
 const map = L.map('map');
 
 const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -58,10 +75,23 @@ function renderPanel(media, locked) {
   }
   addInfoRow('경로', winPath, 'path-text');
 
+  const useYoutube = media.type === 'video' && media.youtubeId && !forceLocalSet.has(media.id);
+
   if (media.type === 'photo') {
     const img = document.createElement('img');
     img.src = media.path;
     panelMediaEl.appendChild(img);
+  } else if (useYoutube) {
+    const iframe = document.createElement('iframe');
+    iframe.width = '100%';
+    iframe.height = '360';
+    iframe.frameBorder = '0';
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.allowFullscreen = true;
+    const mute = locked ? '0' : '1';
+    iframe.src = `https://www.youtube.com/embed/${media.youtubeId}?autoplay=1&mute=${mute}`;
+    panelMediaEl.appendChild(iframe);
+    endValueEl.textContent = '유튜브 영상 (길이는 유튜브에서 확인)';
   } else {
     const video = document.createElement('video');
     video.src = media.path;
@@ -79,6 +109,34 @@ function renderPanel(media, locked) {
     panelMediaEl.appendChild(video);
   }
 
+  if (media.type === 'video') {
+    const btnRow = document.createElement('div');
+    btnRow.className = 'youtube-btn-row';
+
+    if (media.youtubeId) {
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'copy-btn';
+      toggleBtn.textContent = forceLocalSet.has(media.id) ? '유튜브로 보기' : '로컬재생';
+      toggleBtn.addEventListener('click', () => {
+        if (forceLocalSet.has(media.id)) {
+          forceLocalSet.delete(media.id);
+        } else {
+          forceLocalSet.add(media.id);
+        }
+        renderPanel(media, locked);
+      });
+      btnRow.appendChild(toggleBtn);
+    } else {
+      const uploadBtn = document.createElement('button');
+      uploadBtn.className = 'copy-btn';
+      uploadBtn.textContent = '유튜브에 업로드';
+      uploadBtn.addEventListener('click', () => uploadToYoutube(media, uploadBtn));
+      btnRow.appendChild(uploadBtn);
+    }
+
+    panelInfoEl.appendChild(btnRow);
+  }
+
   const copyBtn = document.createElement('button');
   copyBtn.className = 'copy-btn copy-all-btn';
   copyBtn.textContent = '정보 복사';
@@ -93,10 +151,33 @@ function renderPanel(media, locked) {
   panelInfoEl.appendChild(copyBtn);
 }
 
-function fileUrlToWindowsPath(fileUrl) {
-  let p = fileUrl.replace(/^file:\/\/\//, '');
-  p = decodeURIComponent(p);
-  return p.replace(/\//g, '\\');
+function uploadToYoutube(media, btn) {
+  const winPath = fileUrlToWindowsPath(media.path);
+  const basename = getBasename(media);
+  const originalText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '업로드 중... (영상 길이에 따라 시간이 걸려요)';
+
+  fetch(`${UPLOAD_SERVER}/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: winPath, basename, title: basename }),
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+      return res.json();
+    })
+    .then((data) => {
+      media.youtubeId = data.videoId;
+      const marker = markerById[media.id];
+      if (marker) marker.setIcon(makeMarkerIcon(media));
+      renderPanel(media, true);
+    })
+    .catch((err) => {
+      btn.disabled = false;
+      btn.textContent = originalText;
+      alert(`업로드 실패: ${err.message}\n\nscripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.`);
+    });
 }
 
 function copyPathToClipboard(text, btn) {
@@ -169,7 +250,8 @@ function makeMarkerIcon(media) {
   const symbol = SLOPE_SYMBOL[media.slope] || '';
   const borderStyle = media.estimated ? 'dashed' : 'solid';
   const opacity = media.estimated ? 0.55 : 1;
-  const html = `<div class="media-marker" style="background:${media.color};border-style:${borderStyle};opacity:${opacity}">${symbol}</div>`;
+  const badge = media.youtubeId ? '<div class="youtube-badge">▶</div>' : '';
+  const html = `<div class="media-marker" style="background:${media.color};border-style:${borderStyle};opacity:${opacity}">${symbol}${badge}</div>`;
   return L.divIcon({ html, className: 'media-marker-wrap', iconSize: [16, 16], iconAnchor: [8, 8] });
 }
 
@@ -229,6 +311,11 @@ legendEl.appendChild(slopeTitle);
   row.innerHTML = `<span class="swatch slope-swatch">${SLOPE_SYMBOL[key]}</span><span>${label}</span>`;
   legendEl.appendChild(row);
 });
+
+const youtubeRow = document.createElement('div');
+youtubeRow.className = 'row';
+youtubeRow.innerHTML = '<span class="swatch" style="background:#ff0000;border-radius:2px;width:9px;height:9px;font-size:6px;color:#fff;display:flex;align-items:center;justify-content:center;">▶</span><span>유튜브 업로드됨</span>';
+legendEl.appendChild(youtubeRow);
 
 const unknownMedia = MEDIA.filter((m) => m.slope === 'unknown');
 const unknownBtn = document.createElement('div');

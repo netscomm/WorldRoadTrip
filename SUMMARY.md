@@ -20,6 +20,11 @@
   - 닫기(×) 버튼 또는 다른 마커 클릭으로 전환/해제.
   - 범례에 **"미분류 목록 보기" 버튼**(현재 106개) — 클릭하면 좌측에 미분류(경사 "알 수 없음") 영상 목록이 파일명+시간으로 표시되고, 항목 클릭 시 해당 위치로 지도 이동 + 재생 패널 고정. 위치 추정으로 잘못 분류된 클립이 있는지 한눈에 점검할 수 있음.
 - **검증**: 헤드리스 크롬 + Chrome DevTools Protocol로 hover/click/잠금/해제, 범례 클릭 시 지도 이동, 경로 복사(클립보드 확인), 패널 크기(화면 면적의 약 27%), 경사 마커 아이콘(스크린샷 확대로 ▲ 표시 확인), 미분류 목록 열기/항목 클릭 이동 모두 실제 동작을 확인 완료.
+- **`scripts/youtube_upload_server.py` + YouTube 연동**: 로컬에서 실행하는 업로드 도우미 서버(Flask, `localhost:8765`).
+  - 마커 클릭 패널에 **"유튜브에 업로드"** 버튼(아직 안 올라간 영상) → 클릭 시 OAuth 인증(최초 1회 브라우저 로그인) 후 YouTube Data API로 실제 업로드(비공개 등록: unlisted), 완료되면 `docs/youtube_map.js`(파일명→videoId 매핑)에 자동 기록.
+  - 영상이 이미 유튜브에 있으면(매핑에 있으면) **로컬 영상보다 유튜브 임베드를 먼저 재생**. 패널에 **"로컬재생"** 버튼으로 강제로 로컬 파일 재생으로 전환 가능(다시 누르면 "유튜브로 보기"로 전환).
+  - 마커에 **빨간 ▶ 배지**로 유튜브 업로드 여부 표시, 범례에도 설명 추가.
+  - `client_secret.json`, `token.json`은 `.gitignore`에 추가해 GitHub에 올라가지 않도록 처리.
 
 ## 알아두실 점
 
@@ -42,3 +47,10 @@
   2. `fitparse` 패키지 설치 필요: `pip install fitparse` (이 PC의 Anaconda 환경에는 이미 설치되어 있음, 새 PC에서는 다시 설치해야 함).
   3. 경로가 `F:\DCIM\...`가 아니라면 `scripts/build_data.py` 상단의 `FIT_DIR`, `DJI_DIR`, `OUT_PATH` 값을 실제 경로로 수정.
   4. `python scripts/build_data.py` 실행 → `docs/data.js`가 새로 생성됨.
+
+- **유튜브 업로드 버튼을 쓰려면**: 페이지 열기 전에 `scripts/youtube_upload_server.py`를 따로 실행해 둬야 합니다.
+  1. `pip install flask google-auth-oauthlib google-api-python-client` (이 PC에는 이미 설치됨).
+  2. Google Cloud Console에서 받은 OAuth 클라이언트 비밀 파일을 `scripts/client_secret.json`으로 저장 (완료됨).
+  3. `python scripts/youtube_upload_server.py` 실행 → `http://localhost:8765`에서 대기. 페이지를 열어두고 이 창은 계속 켜둬야 업로드 버튼이 동작함.
+  4. 최초 업로드 시 브라우저가 열리며 netscomm@gmail.com 계정으로 로그인/동의 → 이후엔 `scripts/token.json`에 저장돼 재인증 불필요.
+  5. 업로드가 끝나면 `docs/youtube_map.js`가 갱신됨 — GitHub에도 반영하고 싶으면 다시 commit/push.
