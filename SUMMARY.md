@@ -6,9 +6,9 @@
 
 - **`scripts/build_data.py`**: FIT 파일들과 DJI 영상 328개를 파싱해 `docs/data.js`를 생성.
   - FIT 파일의 `timestamp`(UTC)는 +2시간 보정해 이탈리아 현지시간으로 통일.
-  - DJI 파일명 시간은 **2026-06-10 00:00 이전 클립은 -7시간(한국시간→이탈리아), 이후 클립은 -1시간(카메라가 6/10부터 이탈리아 현지시간 비슷하게 바뀌었지만 1시간 빠르게 설정된 것으로 보임, 추정상 CET/UTC+1로 맞춰져서 CEST/UTC+2보다 1시간 느려야 할 게 빠르게 기록됨)** 으로 분기 처리.
-    - 검증: `DJI_20260610111020_0364_D.MP4` 실제 위치(46.536944, 12.138285)가 -1시간 보정한 시각(10:10:20) 기준 FIT 위치(46.538, 12.139)와 거의 정확히 일치. `DJI_20260612163853_0466_D.MP4`(까레짜 호수)도 -1시간 보정(15:38:53) 시 FIT 트랙이 호수에서 4.25km로 가장 가까워짐(보정 전엔 7.3km).
-  - 결과: 영상 328개 중 222개는 FIT 트랙 구간 내 보간으로 매칭, 106개는 가장 가까운 트랙 지점에 추정 배치(테두리 점선/반투명으로 구분 표시).
+  - **DJI 영상 시간은 파일명 추정 대신 영상 내부 메타데이터(`creation_time`, ffprobe로 추출한 UTC) + 2시간(CEST)으로 계산.** 이전엔 "파일명을 파싱해서 날짜별로 -7시간/-1시간을 다르게 적용"하는 예외 로직이었는데, 사용자가 확인해준 실제 좌표와 대조해보니 메타데이터 방식이 훨씬 정확해서(`DJI_20260610111020_0364_D.MP4`가 실제 위치와 오차 0m로 정확히 일치, 기존 추측 방식은 119m 오차) 예외 로직을 전부 삭제하고 메타데이터 기반으로 교체. 328개 전부 메타데이터에서 시간을 읽었고(`metadata_time=328`), 메타데이터가 없는 경우에만 파일명으로 대체(fallback).
+  - 패널에 **"시간 출처"** 행을 추가해서 메타데이터로 읽었는지/파일명으로 추정했는지 표시 — 추후 다른 영상/사진을 추가할 때도 이 구조를 그대로 재사용 가능(사진은 EXIF `DateTimeOriginal` 등을 같은 방식으로 추가하면 됨).
+  - 결과: 영상 328개 중 214개는 FIT 트랙 구간 내 보간으로 매칭, 114개는 가장 가까운 트랙 지점에 추정 배치(테두리 점선/반투명으로 구분 표시).
   - **경사 구분**: FIT 고도 데이터(`enhanced_altitude`)와 영상 길이(`mutagen`으로 mp4 길이 추출)를 이용해, 클립 시작~종료 시점의 고도 변화를 계산. 1.5m 이상 하강하면 내리막, 1.5m 이상 상승하면 오르막, 그 외는 평지로 분류(FIT 구간 밖이라 매칭 안 된 클립은 "알 수 없음"). 현재 분포: 평지 131, 오르막 57, 내리막 34, 알 수 없음 106.
 - **`docs/index.html`, `app.js`, `style.css`**: Leaflet 지도 기반 정적 웹페이지(서버 없이 `index.html` 더블클릭으로 동작).
   - 트랙별 색상으로 polyline 표시, 영상 시작 지점에 트랙 색과 맞춘 마커 표시.
@@ -45,9 +45,10 @@
 
 - **FIT/영상 파일을 추가하거나 경로가 바뀌어서 데이터를 다시 만들어야 한다면**:
   1. Python이 설치되어 있어야 함 (현재는 Anaconda3 Python으로 작업, `python --version` 확인).
-  2. `fitparse` 패키지 설치 필요: `pip install fitparse` (이 PC의 Anaconda 환경에는 이미 설치되어 있음, 새 PC에서는 다시 설치해야 함).
-  3. 경로가 `F:\DCIM\...`가 아니라면 `scripts/build_data.py` 상단의 `FIT_DIR`, `DJI_DIR`, `OUT_PATH` 값을 실제 경로로 수정.
-  4. `python scripts/build_data.py` 실행 → `docs/data.js`가 새로 생성됨.
+  2. `fitparse`, `mutagen` 패키지 설치 필요: `pip install fitparse mutagen` (이 PC의 Anaconda 환경에는 이미 설치되어 있음, 새 PC에서는 다시 설치해야 함).
+  3. **ffmpeg/ffprobe 설치 필요** (영상 메타데이터의 `creation_time` 읽기용): `winget install Gyan.FFmpeg` (이 PC에는 이미 설치됨). `scripts/build_data.py`의 `FFPROBE_PATH`가 PATH에 없으면 winget 설치 경로로 자동 폴백하는데, ffmpeg 버전이 바뀌면 경로도 바뀌니 안 맞으면 그 상수를 새 경로로 수정.
+  4. 경로가 `F:\DCIM\...`가 아니라면 `scripts/build_data.py` 상단의 `FIT_DIR`, `DJI_DIR`, `OUT_PATH` 값을 실제 경로로 수정.
+  5. `python scripts/build_data.py` 실행 → `docs/data.js`가 새로 생성됨 (328개 파일의 메타데이터를 ffprobe로 읽기 때문에 2분 정도 걸림).
 
 - **유튜브 업로드 버튼을 쓰려면**: 페이지 열기 전에 `scripts/youtube_upload_server.py`를 따로 실행해 둬야 합니다.
   1. `pip install flask google-auth-oauthlib google-api-python-client` (이 PC에는 이미 설치됨).

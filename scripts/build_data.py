@@ -1,7 +1,9 @@
 import json
 import os
 import re
-from datetime import timedelta
+import shutil
+import subprocess
+from datetime import datetime, timedelta
 
 import fitparse
 from mutagen.mp4 import MP4
@@ -12,20 +14,22 @@ FIT_DIR = r"F:\DCIM\FIT files"
 DJI_DIR = r"F:\DCIM\DJI_001"
 OUT_PATH = r"F:\DCIM\italyroadtrip\docs\data.js"
 
-from datetime import datetime as _datetime
+FIT_TO_ITALY = timedelta(hours=2)  # FIT timestamp is UTC -> CEST
 
-FIT_TO_ITALY = timedelta(hours=2)   # FIT timestamp is UTC -> CEST
+# Every media file's real capture time comes from its own embedded UTC
+# metadata (MP4 creation_time / EXIF DateTimeOriginal+offset, etc), converted
+# to local time with LOCAL_UTC_OFFSET below. This replaced an earlier
+# filename-based heuristic (parsing "DJI_YYYYMMDDHHMMSS_..." and guessing a
+# per-date correction) that turned out to be wrong: cross-checking the
+# embedded creation_time against a user-confirmed real-world location showed
+# the metadata-derived position only 4m off, vs 119m off for the old guess.
+LOCAL_UTC_OFFSET = timedelta(hours=2)  # CEST for this (Italy) trip
 
-# DJI camera clock was set to Korea local time (UTC+9) for the first part of the
-# trip, needing a -7h shift to Italy local (CEST, UTC+2). Sometime between
-# 2026-06-09 and 2026-06-10 the camera clock switched to (near) Italy local
-# time but 1 hour fast (likely CET/UTC+1 instead of CEST/UTC+2), confirmed by
-# the user against real capture times for clips on 6/10 and 6/12 (the Carezza
-# clip lines up much better with FIT -- 4.25km vs 7.3km from the lake -- once
-# shifted back by 1h).
-DJI_OFFSET_CUTOVER = _datetime(2026, 6, 10, 0, 0, 0)
-DJI_TO_ITALY_BEFORE = timedelta(hours=-7)
-DJI_TO_ITALY_AFTER = timedelta(hours=-1)
+FFPROBE_PATH = shutil.which("ffprobe") or (
+    r"C:\Users\netscomm\AppData\Local\Microsoft\WinGet\Packages"
+    r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
+    r"\ffmpeg-8.1.1-full_build\bin\ffprobe.exe"
+)
 
 PALETTE = [
     "#e6194b", "#3cb44b", "#4363d8", "#f58231", "#911eb4",
@@ -35,6 +39,22 @@ PALETTE = [
 SEMI_TO_DEG = 180.0 / (2 ** 31)
 
 DJI_NAME_RE = re.compile(r"^DJI_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d+)_D(?:_1)?\.MP4$")
+
+
+def get_video_creation_time_utc(path):
+    """Reads the embedded creation_time (UTC) from a video's container metadata."""
+    try:
+        out = subprocess.run(
+            [FFPROBE_PATH, "-v", "quiet", "-show_entries", "format_tags=creation_time",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        if not out:
+            return None
+        return datetime.strptime(out, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except Exception as e:
+        print(f"WARN: could not read creation_time for {path}: {e}")
+        return None
 
 
 def parse_fit_file(path, color):
@@ -83,7 +103,6 @@ def build_tracks():
 
 
 def nearest_point(track, t_dt):
-    from datetime import datetime
     pts = track["points"]
     best = min(pts, key=lambda p: abs(datetime.fromisoformat(p["t"]) - t_dt))
     return best
@@ -92,7 +111,6 @@ def nearest_point(track, t_dt):
 def interpolate_dt(track, t_dt):
     """Returns (lat, lon, alt) at t_dt, clamped to the track's time range. alt is None
     if altitude data isn't available at the surrounding points."""
-    from datetime import datetime
     pts = track["points"]
     times = [datetime.fromisoformat(p["t"]) for p in pts]
     if t_dt <= times[0]:
@@ -139,24 +157,29 @@ def classify_slope(start_alt, end_alt):
 
 
 def build_media(tracks):
-    from datetime import datetime
-
     media = []
     files = sorted(f for f in os.listdir(DJI_DIR) if f.upper().endswith(".MP4"))
     matched = 0
     estimated = 0
+    metadata_time_count = 0
     for i, fname in enumerate(files):
-        m = DJI_NAME_RE.match(fname)
-        if not m:
-            print(f"WARN: filename doesn't match pattern: {fname}")
-            continue
-        y, mo, d, h, mi, s, idx = m.groups()
-        camera_dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))
-        offset = DJI_TO_ITALY_BEFORE if camera_dt < DJI_OFFSET_CUTOVER else DJI_TO_ITALY_AFTER
-        italy_dt = camera_dt + offset
-
         full_path = os.path.join(DJI_DIR, fname)
         duration = get_video_duration(full_path)
+
+        creation_utc = get_video_creation_time_utc(full_path)
+        if creation_utc is not None:
+            italy_dt = creation_utc + LOCAL_UTC_OFFSET
+            time_source = "metadata"
+            metadata_time_count += 1
+        else:
+            m = DJI_NAME_RE.match(fname)
+            if not m:
+                print(f"WARN: no metadata time and filename doesn't match pattern: {fname}")
+                continue
+            y, mo, d, h, mi, s, idx = m.groups()
+            italy_dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))
+            time_source = "filename_fallback"
+            print(f"WARN: falling back to filename time for {fname}")
 
         # find a track whose range contains italy_dt
         covering = [t for t in tracks if t["startTime"] <= italy_dt.isoformat() <= t["endTime"]]
@@ -198,9 +221,11 @@ def build_media(tracks):
             "trackId": track["id"] if track else None,
             "estimated": est,
             "slope": slope,
+            "timeSource": time_source,
         })
 
-    print(f"media total={len(media)} matched={matched} estimated={estimated}")
+    print(f"media total={len(media)} matched={matched} estimated={estimated} "
+          f"metadata_time={metadata_time_count} filename_fallback={len(media) - metadata_time_count}")
     return media
 
 

@@ -73,6 +73,9 @@ function renderPanel(media, locked) {
   if (media.type === 'video') {
     addInfoRow('경사', SLOPE_LABEL[media.slope] || media.slope);
   }
+  if (media.timeSource) {
+    addInfoRow('시간 출처', TIME_SOURCE_LABEL[media.timeSource] || media.timeSource);
+  }
   addInfoRow('경로', winPath, 'path-text');
 
   const useYoutube = media.type === 'video' && media.youtubeId && !forceLocalSet.has(media.id);
@@ -287,6 +290,12 @@ const SLOPE_LABEL = {
   downhill: '내리막 ▼',
   flat: '평지 ●',
   unknown: '알 수 없음',
+};
+
+const TIME_SOURCE_LABEL = {
+  metadata: '영상 메타데이터 (creation_time)',
+  filename_fallback: '파일명 (메타데이터 없음)',
+  exif: '사진 EXIF',
 };
 
 function makeMarkerIcon(media) {
