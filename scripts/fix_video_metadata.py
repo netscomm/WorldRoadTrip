@@ -15,25 +15,17 @@ FFMPEG_DIR = (
 FFMPEG_PATH = shutil.which("ffmpeg") or os.path.join(FFMPEG_DIR, "ffmpeg.exe")
 FFPROBE_PATH = shutil.which("ffprobe") or os.path.join(FFMPEG_DIR, "ffprobe.exe")
 
-# 0610_코르티나담페초.fit ride: these clips' embedded creation_time is 1h
-# later than the real capture time (confirmed by the user against actual
-# video content), so we shift it back by 1h.
+# DJI camera clock recorded creation_time 1h later than the real capture
+# time for the rest of the trip from 6/10 through 6/12 (confirmed by the
+# user against actual video content, first noticed on the 0610_코르티나담페초
+# ride), so we shift those back by 1h.
 CORRECTION = timedelta(hours=-1)
+TARGET_DATE_PREFIXES = ("DJI_20260610", "DJI_20260611", "DJI_20260612")
 
-TARGET_FILES = [
-    "DJI_20260610111002_0362_D.MP4",
-    "DJI_20260610111012_0363_D.MP4",
-    "DJI_20260610111020_0364_D.MP4",
-    "DJI_20260610111127_0365_D.MP4",
-    "DJI_20260610111428_0366_D.MP4",
-    "DJI_20260610111512_0367_D.MP4",
-    "DJI_20260610111517_0368_D.MP4",
-    "DJI_20260610111521_0369_D.MP4",
-    "DJI_20260610111819_0371_D.MP4",
-    "DJI_20260610111909_0372_D.MP4",
-    "DJI_20260610111936_0373_D.MP4",
-    "DJI_20260610114600_0374_D.MP4",
-]
+TARGET_FILES = sorted(
+    f for f in os.listdir(DJI_DIR)
+    if f.upper().endswith(".MP4") and f.startswith(TARGET_DATE_PREFIXES)
+)
 
 
 def read_creation_time(path):
