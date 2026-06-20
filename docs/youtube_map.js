@@ -1,1 +1,3 @@
-const YOUTUBE_MAP = {};
+const YOUTUBE_MAP = {
+  "DJI_20260604201930_0130_D_1.MP4": "z9RTPDP75zE"
+};
