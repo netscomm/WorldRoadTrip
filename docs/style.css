@@ -206,6 +206,12 @@ html, body {
   margin-top: 6px;
 }
 
+.youtube-note {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #999;
+}
+
 .upload-progress {
   position: relative;
   margin-top: 6px;

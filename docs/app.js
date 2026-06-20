@@ -1,5 +1,9 @@
 const UPLOAD_SERVER = 'http://localhost:8765';
 const forceLocalSet = new Set();
+// YouTube refuses to embed video in a page loaded from file:// (origin is
+// "null"), so on this PC's local copy we always fall back to local
+// playback and just offer a link to open YouTube in a new tab instead.
+const IS_FILE_ORIGIN = window.location.protocol === 'file:';
 
 function fileUrlToWindowsPath(fileUrl) {
   let p = fileUrl.replace(/^file:\/\/\//, '');
@@ -78,7 +82,7 @@ function renderPanel(media, locked) {
   }
   addInfoRow('경로', winPath, 'path-text');
 
-  const useYoutube = media.type === 'video' && media.youtubeId && !forceLocalSet.has(media.id);
+  const useYoutube = media.type === 'video' && media.youtubeId && !forceLocalSet.has(media.id) && !IS_FILE_ORIGIN;
 
   if (media.type === 'photo') {
     const img = document.createElement('img');
@@ -116,7 +120,20 @@ function renderPanel(media, locked) {
     const btnRow = document.createElement('div');
     btnRow.className = 'youtube-btn-row';
 
-    if (media.youtubeId) {
+    if (media.youtubeId && IS_FILE_ORIGIN) {
+      const openBtn = document.createElement('button');
+      openBtn.className = 'copy-btn';
+      openBtn.textContent = '유튜브에서 보기 (새 탭)';
+      openBtn.addEventListener('click', () => {
+        window.open(`https://youtu.be/${media.youtubeId}`, '_blank');
+      });
+      btnRow.appendChild(openBtn);
+
+      const note = document.createElement('div');
+      note.className = 'youtube-note';
+      note.textContent = 'file://로 연 페이지에서는 유튜브 임베드가 차단되어 로컬 영상으로 재생 중입니다.';
+      btnRow.appendChild(note);
+    } else if (media.youtubeId) {
       const toggleBtn = document.createElement('button');
       toggleBtn.className = 'copy-btn';
       toggleBtn.textContent = forceLocalSet.has(media.id) ? '유튜브로 보기' : '로컬재생';
