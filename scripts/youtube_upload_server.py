@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import threading
+import uuid
 
 from flask import Flask, request, jsonify
 from google.oauth2.credentials import Credentials
@@ -16,8 +18,17 @@ YOUTUBE_MAP_PATH = os.path.join(SCRIPT_DIR, "..", "docs", "youtube_map.js")
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 DEFAULT_PRIVACY = "unlisted"
 PORT = 8765
+UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024  # 4MB chunks so progress updates smoothly
 
 app = Flask(__name__)
+
+jobs = {}
+jobs_lock = threading.Lock()
+
+
+def set_job(job_id, **fields):
+    with jobs_lock:
+        jobs[job_id].update(fields)
 
 
 def get_youtube_service():
@@ -66,6 +77,33 @@ def health():
     return jsonify({"status": "ok"})
 
 
+def run_upload(job_id, path, basename, title):
+    try:
+        youtube = get_youtube_service()
+        media = MediaFileUpload(path, chunksize=UPLOAD_CHUNK_SIZE, resumable=True)
+        request_body = {
+            "snippet": {"title": title},
+            "status": {"privacyStatus": DEFAULT_PRIVACY},
+        }
+        insert_request = youtube.videos().insert(
+            part="snippet,status", body=request_body, media_body=media
+        )
+
+        response = None
+        while response is None:
+            status, response = insert_request.next_chunk()
+            if status:
+                set_job(job_id, progress=round(status.progress() * 100, 1))
+
+        set_job(job_id, status="done", progress=100, videoId=response["id"])
+
+        mapping = load_youtube_map()
+        mapping[basename] = response["id"]
+        save_youtube_map(mapping)
+    except Exception as e:
+        set_job(job_id, status="error", error=str(e))
+
+
 @app.route("/upload", methods=["POST", "OPTIONS"])
 def upload():
     if request.method == "OPTIONS":
@@ -79,23 +117,23 @@ def upload():
     if not path or not os.path.exists(path):
         return jsonify({"error": f"file not found: {path}"}), 400
 
-    youtube = get_youtube_service()
-    media = MediaFileUpload(path, chunksize=-1, resumable=True)
-    request_body = {
-        "snippet": {"title": title},
-        "status": {"privacyStatus": DEFAULT_PRIVACY},
-    }
-    insert_request = youtube.videos().insert(
-        part="snippet,status", body=request_body, media_body=media
-    )
-    response = insert_request.execute()
-    video_id = response["id"]
+    job_id = str(uuid.uuid4())
+    with jobs_lock:
+        jobs[job_id] = {"status": "uploading", "progress": 0, "videoId": None, "error": None}
 
-    mapping = load_youtube_map()
-    mapping[basename] = video_id
-    save_youtube_map(mapping)
+    thread = threading.Thread(target=run_upload, args=(job_id, path, basename, title), daemon=True)
+    thread.start()
 
-    return jsonify({"videoId": video_id})
+    return jsonify({"jobId": job_id})
+
+
+@app.route("/progress/<job_id>", methods=["GET"])
+def progress(job_id):
+    with jobs_lock:
+        job = jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "unknown job"}), 404
+    return jsonify(job)
 
 
 if __name__ == "__main__":

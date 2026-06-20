@@ -130,8 +130,21 @@ function renderPanel(media, locked) {
       const uploadBtn = document.createElement('button');
       uploadBtn.className = 'copy-btn';
       uploadBtn.textContent = '유튜브에 업로드';
-      uploadBtn.addEventListener('click', () => uploadToYoutube(media, uploadBtn));
+
+      const progressWrap = document.createElement('div');
+      progressWrap.className = 'upload-progress hidden';
+      const progressBar = document.createElement('div');
+      progressBar.className = 'upload-progress-bar';
+      const progressText = document.createElement('span');
+      progressText.className = 'upload-progress-text';
+      progressWrap.appendChild(progressBar);
+      progressWrap.appendChild(progressText);
+
+      uploadBtn.addEventListener('click', () =>
+        uploadToYoutube(media, uploadBtn, progressWrap, progressBar, progressText)
+      );
       btnRow.appendChild(uploadBtn);
+      btnRow.appendChild(progressWrap);
     }
 
     panelInfoEl.appendChild(btnRow);
@@ -151,12 +164,45 @@ function renderPanel(media, locked) {
   panelInfoEl.appendChild(copyBtn);
 }
 
-function uploadToYoutube(media, btn) {
+function uploadToYoutube(media, btn, progressWrap, progressBar, progressText) {
   const winPath = fileUrlToWindowsPath(media.path);
   const basename = getBasename(media);
   const originalText = btn.textContent;
   btn.disabled = true;
-  btn.textContent = '업로드 중... (영상 길이에 따라 시간이 걸려요)';
+  btn.textContent = '업로드 시작 중...';
+
+  const fail = (message) => {
+    btn.disabled = false;
+    btn.textContent = originalText;
+    progressWrap.classList.add('hidden');
+    alert(`업로드 실패: ${message}\n\nscripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.`);
+  };
+
+  const poll = (jobId) => {
+    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+        return res.json();
+      })
+      .then((job) => {
+        if (job.status === 'error') {
+          fail(job.error || '알 수 없는 오류');
+          return;
+        }
+        progressBar.style.width = `${job.progress}%`;
+        progressText.textContent = `${job.progress}%`;
+
+        if (job.status === 'done') {
+          media.youtubeId = job.videoId;
+          const marker = markerById[media.id];
+          if (marker) marker.setIcon(makeMarkerIcon(media));
+          renderPanel(media, true);
+          return;
+        }
+        setTimeout(() => poll(jobId), 1000);
+      })
+      .catch((err) => fail(err.message));
+  };
 
   fetch(`${UPLOAD_SERVER}/upload`, {
     method: 'POST',
@@ -168,16 +214,13 @@ function uploadToYoutube(media, btn) {
       return res.json();
     })
     .then((data) => {
-      media.youtubeId = data.videoId;
-      const marker = markerById[media.id];
-      if (marker) marker.setIcon(makeMarkerIcon(media));
-      renderPanel(media, true);
+      btn.textContent = '업로드 중...';
+      progressWrap.classList.remove('hidden');
+      progressBar.style.width = '0%';
+      progressText.textContent = '0%';
+      poll(data.jobId);
     })
-    .catch((err) => {
-      btn.disabled = false;
-      btn.textContent = originalText;
-      alert(`업로드 실패: ${err.message}\n\nscripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.`);
-    });
+    .catch((err) => fail(err.message));
 }
 
 function copyPathToClipboard(text, btn) {
