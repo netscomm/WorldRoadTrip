@@ -137,6 +137,29 @@ html, body {
   overflow-y: auto;
 }
 
+#legend-country-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.country-tab {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid #999;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.country-tab.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
 #legend .row {
   display: flex;
   align-items: center;
@@ -342,5 +365,10 @@ html, body {
 
   #legend .legend-title {
     margin-bottom: 2px;
+  }
+
+  .country-tab {
+    font-size: 9px;
+    padding: 1px 5px;
   }
 }

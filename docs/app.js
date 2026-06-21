@@ -359,19 +359,58 @@ legendTitle.className = 'legend-title';
 legendTitle.textContent = 'FIT 트랙 (클릭하면 해당 구간으로 이동)';
 legendEl.appendChild(legendTitle);
 
+const legendCountryTabsEl = document.createElement('div');
+legendCountryTabsEl.id = 'legend-country-tabs';
+legendEl.appendChild(legendCountryTabsEl);
+
 const legendTracksEl = document.createElement('div');
 legendTracksEl.id = 'legend-tracks';
 legendEl.appendChild(legendTracksEl);
 
+const countries = [];
 TRACKS.forEach((track) => {
-  const row = document.createElement('div');
-  row.className = 'row clickable';
-  row.innerHTML = `<span class="swatch" style="background:${track.color}"></span><span>${track.file}</span>`;
-  row.addEventListener('click', () => {
-    map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] });
-  });
-  legendTracksEl.appendChild(row);
+  if (!countries.some((c) => c.code === track.country)) {
+    countries.push({ code: track.country, label: track.countryLabel });
+  }
 });
+
+let activeCountry = countries.length ? countries[0].code : null;
+
+function renderTrackRows(country) {
+  legendTracksEl.innerHTML = '';
+  TRACKS.filter((track) => track.country === country).forEach((track) => {
+    const row = document.createElement('div');
+    row.className = 'row clickable';
+    row.innerHTML = `<span class="swatch" style="background:${track.color}"></span><span>${track.file}</span>`;
+    row.addEventListener('click', () => {
+      map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] });
+    });
+    legendTracksEl.appendChild(row);
+  });
+}
+
+function renderCountryTabs() {
+  legendCountryTabsEl.innerHTML = '';
+  if (countries.length <= 1) {
+    return; // only one (or no) country present, no tabs needed
+  }
+  countries.forEach((c) => {
+    const tab = document.createElement('button');
+    tab.className = 'country-tab' + (c.code === activeCountry ? ' active' : '');
+    tab.textContent = c.label;
+    tab.addEventListener('click', () => {
+      activeCountry = c.code;
+      renderCountryTabs();
+      renderTrackRows(activeCountry);
+    });
+    legendCountryTabsEl.appendChild(tab);
+  });
+}
+
+renderCountryTabs();
+if (activeCountry) {
+  renderTrackRows(activeCountry);
+}
 const estRow = document.createElement('div');
 estRow.className = 'row';
 estRow.innerHTML = '<span class="swatch" style="background:#ccc;border:1px dashed #fff"></span><span>위치 추정 (가장 가까운 FIT 트랙과 1시간 이상 차이)</span>';

@@ -45,6 +45,24 @@ SEMI_TO_DEG = 180.0 / (2 ** 31)
 
 DJI_NAME_RE = re.compile(r"^DJI_(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})_(\d+)_D(?:_1)?\.MP4$")
 
+# Rough bounding boxes for country auto-detection (lat_min, lat_max, lon_min, lon_max).
+# Good enough to tell trips apart by continent/country without an internet
+# reverse-geocoding call; refine if a future trip lands in an overlap zone.
+COUNTRY_BOUNDS = [
+    ("KR", "한국", 33.0, 39.0, 124.0, 132.0),
+    ("IT", "이탈리아", 35.0, 47.5, 6.0, 19.0),
+    ("FR", "프랑스", 41.0, 51.5, -5.0, 10.0),
+    ("ES", "스페인", 36.0, 44.0, -10.0, 4.0),
+    ("US", "미국", 24.0, 49.5, -125.0, -66.0),
+]
+
+
+def detect_country(lat, lon):
+    for code, label, lat_min, lat_max, lon_min, lon_max in COUNTRY_BOUNDS:
+        if lat_min <= lat <= lat_max and lon_min <= lon <= lon_max:
+            return code, label
+    return "OTHER", "기타"
+
 
 def get_video_creation_time_utc(path):
     """Reads the embedded creation_time (UTC) from a video's container metadata."""
@@ -95,6 +113,7 @@ def build_tracks():
         if not points:
             print(f"WARN: no points found in {fname}")
             continue
+        country, country_label = detect_country(points[0]["lat"], points[0]["lon"])
         tracks.append({
             "id": f"track{i}",
             "file": fname,
@@ -102,6 +121,8 @@ def build_tracks():
             "points": points,
             "startTime": points[0]["t"],
             "endTime": points[-1]["t"],
+            "country": country,
+            "countryLabel": country_label,
         })
         print(f"{fname}: {len(points)} points, {points[0]['t']} -> {points[-1]['t']}")
     return tracks
