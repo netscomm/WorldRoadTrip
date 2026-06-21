@@ -391,8 +391,8 @@ function renderTrackRows(country) {
 
 function renderCountryTabs() {
   legendCountryTabsEl.innerHTML = '';
-  if (countries.length <= 1) {
-    return; // only one (or no) country present, no tabs needed
+  if (countries.length === 0) {
+    return; // no tracks at all, nothing to show tabs for
   }
   countries.forEach((c) => {
     const tab = document.createElement('button');

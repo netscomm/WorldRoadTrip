@@ -24,5 +24,5 @@
 ## 4. FIT 트랙 목록을 국가별 탭으로 관리 — ✅ 완료
 
 - `scripts/build_data.py`: 각 FIT 트랙의 첫 지점 위경도로 국가를 자동 판별(`detect_country`, 한국/이탈리아/프랑스/스페인/미국 대략적인 bounding box, 그 외는 "기타"). 트랙에 `country`/`countryLabel` 필드 추가.
-- `docs/app.js`, `docs/style.css`: 범례에 국가 탭(`#legend-country-tabs`) 추가, 탭 클릭 시 해당 국가의 트랙만 `#legend-tracks`에 표시. **국가가 1개뿐이면 탭 자체를 숨김**(현재 전부 이탈리아라 탭 없음). 헤드리스 브라우저에서 가상으로 2개 국가 상황을 만들어 탭 표시/필터링 동작을 확인.
+- `docs/app.js`, `docs/style.css`: 범례에 국가 탭(`#legend-country-tabs`) 추가, 탭 클릭 시 해당 국가의 트랙만 `#legend-tracks`에 표시. 경로가 있는 국가는 1개여도 항상 탭으로 표시(현재는 "이탈리아" 탭 하나). 헤드리스 브라우저에서 가상으로 2개 국가 상황을 만들어 탭 표시/필터링 동작을 확인.
 - 참고: bounding box 기반 판별이라 국경 인접 지역은 부정확할 수 있음 — 추후 정밀하게 하려면 reverse-geocoding API 연동 필요(3번 항목과 함께 고려).
