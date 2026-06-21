@@ -9,3 +9,6 @@ NVIDIA Corporation/
 scripts/client_secret.json
 scripts/token.json
 scripts/token.pickle
+
+# runtime logs
+scripts/upload_log.txt

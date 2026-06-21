@@ -355,6 +355,10 @@ legendTitle.className = 'legend-title';
 legendTitle.textContent = 'FIT 트랙 (클릭하면 해당 구간으로 이동)';
 legendEl.appendChild(legendTitle);
 
+const legendTracksEl = document.createElement('div');
+legendTracksEl.id = 'legend-tracks';
+legendEl.appendChild(legendTracksEl);
+
 TRACKS.forEach((track) => {
   const row = document.createElement('div');
   row.className = 'row clickable';
@@ -362,7 +366,7 @@ TRACKS.forEach((track) => {
   row.addEventListener('click', () => {
     map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] });
   });
-  legendEl.appendChild(row);
+  legendTracksEl.appendChild(row);
 });
 const estRow = document.createElement('div');
 estRow.className = 'row';

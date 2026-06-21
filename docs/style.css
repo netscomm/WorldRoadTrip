@@ -132,6 +132,11 @@ html, body {
   margin-bottom: 4px;
 }
 
+#legend-tracks {
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
 #legend .row {
   display: flex;
   align-items: center;
@@ -312,4 +317,30 @@ html, body {
 .unknown-row-time {
   color: #999;
   margin-top: 2px;
+}
+
+@media (max-width: 600px) {
+  #legend {
+    max-width: 46vw;
+    font-size: 10px;
+    padding: 6px 8px;
+  }
+
+  #legend-tracks {
+    max-height: 18vh;
+  }
+
+  #legend .row {
+    gap: 4px;
+    margin: 1px 0;
+  }
+
+  #legend .swatch {
+    width: 9px;
+    height: 9px;
+  }
+
+  #legend .legend-title {
+    margin-bottom: 2px;
+  }
 }
