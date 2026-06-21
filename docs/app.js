@@ -69,7 +69,11 @@ function renderPanel(media, locked) {
   panelInfoEl.innerHTML = '';
 
   const winPath = fileUrlToWindowsPath(media.path);
-  const tag = media.estimated ? ' (위치 추정)' : '';
+  const tag = media.estimated
+    ? ' (위치 추정)'
+    : media.boundaryMatch
+      ? ' (트랙 경계 지점)'
+      : '';
 
   addInfoRow('위도, 경도', `${media.lat.toFixed(6)}, ${media.lon.toFixed(6)}${tag}`);
   addInfoRow('시작 시간', media.time.replace('T', ' '));
@@ -370,7 +374,7 @@ TRACKS.forEach((track) => {
 });
 const estRow = document.createElement('div');
 estRow.className = 'row';
-estRow.innerHTML = '<span class="swatch" style="background:#ccc;border:1px dashed #fff"></span><span>위치 추정 (FIT 트랙 범위 밖)</span>';
+estRow.innerHTML = '<span class="swatch" style="background:#ccc;border:1px dashed #fff"></span><span>위치 추정 (가장 가까운 FIT 트랙과 1시간 이상 차이)</span>';
 legendEl.appendChild(estRow);
 
 const slopeTitle = document.createElement('div');

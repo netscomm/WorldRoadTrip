@@ -10,6 +10,11 @@ from mutagen.mp4 import MP4
 
 SLOPE_THRESHOLD_M = 1.5  # min elevation change over a clip to call it uphill/downhill
 
+# If a clip falls outside every FIT track's time range, but is within this
+# much of the nearest track's start/end, place it at that boundary point
+# instead of dumping it in the "미분류"(unclassified) bucket.
+BOUNDARY_MATCH_THRESHOLD = timedelta(hours=1)
+
 FIT_DIR = r"F:\DCIM\FIT files"
 DJI_DIR = r"F:\DCIM\DJI_001"
 OUT_PATH = r"F:\DCIM\italyroadtrip\docs\data.js"
@@ -161,6 +166,7 @@ def build_media(tracks):
     files = sorted(f for f in os.listdir(DJI_DIR) if f.upper().endswith(".MP4"))
     matched = 0
     estimated = 0
+    boundary_matched = 0
     metadata_time_count = 0
     for i, fname in enumerate(files):
         full_path = os.path.join(DJI_DIR, fname)
@@ -183,6 +189,20 @@ def build_media(tracks):
 
         # find a track whose range contains italy_dt
         covering = [t for t in tracks if t["startTime"] <= italy_dt.isoformat() <= t["endTime"]]
+        boundary_match = False
+        best_track = best_pt = best_delta = None
+
+        if not covering:
+            # nearest point (= nearest track boundary, since italy_dt is outside the range)
+            for t in tracks:
+                p = nearest_point(t, italy_dt)
+                delta = abs(datetime.fromisoformat(p["t"]) - italy_dt)
+                if best_delta is None or delta < best_delta:
+                    best_delta, best_track, best_pt = delta, t, p
+            if best_delta is not None and best_delta <= BOUNDARY_MATCH_THRESHOLD:
+                covering = [best_track]
+                boundary_match = True
+
         if covering:
             track = covering[0]
             lat, lon, start_alt = interpolate_dt(track, italy_dt)
@@ -192,14 +212,9 @@ def build_media(tracks):
                 slope = classify_slope(start_alt, end_alt)
             est = False
             matched += 1
+            if boundary_match:
+                boundary_matched += 1
         else:
-            # nearest point across all tracks
-            best_track, best_pt, best_delta = None, None, None
-            for t in tracks:
-                p = nearest_point(t, italy_dt)
-                delta = abs(datetime.fromisoformat(p["t"]) - italy_dt)
-                if best_delta is None or delta < best_delta:
-                    best_delta, best_track, best_pt = delta, t, p
             track = best_track
             lat, lon = best_pt["lat"], best_pt["lon"]
             slope = "unknown"
@@ -222,10 +237,12 @@ def build_media(tracks):
             "estimated": est,
             "slope": slope,
             "timeSource": time_source,
+            "boundaryMatch": boundary_match,
         })
 
-    print(f"media total={len(media)} matched={matched} estimated={estimated} "
-          f"metadata_time={metadata_time_count} filename_fallback={len(media) - metadata_time_count}")
+    print(f"media total={len(media)} matched={matched} (boundary_matched={boundary_matched}) "
+          f"estimated={estimated} metadata_time={metadata_time_count} "
+          f"filename_fallback={len(media) - metadata_time_count}")
     return media
 
 
