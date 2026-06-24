@@ -371,4 +371,17 @@ html, body {
     font-size: 9px;
     padding: 1px 5px;
   }
+
+  #panel {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    border-radius: 0;
+  }
+
+  #panel-media video,
+  #panel-media img {
+    max-height: 40vh;
+  }
 }
