@@ -16,10 +16,10 @@
 ## 3. 새 경로/영상 업로드를 위한 웹페이지 UI (향후 핵심 기능)
 
 - 사용자가 웹페이지에서 직접:
-  1. 새로운 FIT 파일(또는 Strava 링크, Garmin 링크)을 추가하면, 날짜 기반 이름(`20260702_{라이딩 타이틀}`)으로 새 경로가 생성·적용됨. — 미구현.
-  2. ✅ 완료: 탐색기에서 동영상을 선택하는 대신, 범례의 "새 영상 스캔" 버튼으로 `F:\DCIM\DJI_001`에 있는데 아직 지도에 없는 영상을 찾아 목록으로 보여주고, "추가 + 업로드" 클릭 시 FIT 트랙과 매칭해 마커를 자동 생성 + 유튜브 업로드까지 처리.
-- 2번은 `scripts/youtube_upload_server.py`에 `/scan-new-videos`, `/add-video` 엔드포인트를 추가해 구현(`scripts/build_data.py`의 매칭 로직을 `build_one_media()`로 추출해 재사용). 프론트엔드는 `docs/app.js`/`docs/index.html`/`docs/style.css`에 새 영상 목록 패널 추가.
-- 1번(새 FIT/Strava/Garmin 경로 생성)은 아직 미구현 — FIT 파싱은 이미 `build_data.py`에 있으니 비슷한 패턴(서버 엔드포인트 + 프론트 업로드 UI)으로 확장 가능. Strava/Garmin API 연동은 별도 설계 필요.
+  1. ✅ 완료: FIT 파일을 추가하면, 날짜 기반 이름(`20260702_{라이딩 타이틀}`)으로 새 경로가 생성·적용됨. 가민 커넥트("Export Original")나 스트라바("Export GPX")에서 내려받은 FIT 파일을 그대로 업로드하는 방식. 범례에 경로 이름 입력 + "FIT 경로 추가" 버튼.
+  2. ✅ 완료: 범례의 "새 영상 스캔" 버튼(이 PC 전용, `F:\DCIM\DJI_001` 직접 스캔) 또는 "영상 파일 선택" 버튼(어떤 기기든 파일을 골라 서버로 바이너리 전송, 모바일 포함)으로 새 영상을 추가하면 FIT 트랙과 자동 매칭 + 유튜브 업로드까지 처리.
+- 구현: `scripts/youtube_upload_server.py`에 `/scan-new-videos`, `/add-video`, `/upload-new-video`, `/upload-new-track` 엔드포인트 추가. `scripts/build_data.py`의 매칭 로직을 `build_one_media()`/`build_one_track()`으로 추출해 배치 스크립트와 서버가 공유. 프론트엔드는 `docs/app.js`/`docs/index.html`/`docs/style.css`에 새 영상 목록 패널 + FIT 업로드 폼 추가.
+- Strava/Garmin "링크만 붙여넣으면 자동 가져오기"는 아직 미구현 — 스트라바는 [API 개발자 앱 등록](https://developers.strava.com) + OAuth로 가능(개인 계정만 쓰면 앱 심사 불필요), 가민 커넥트는 개인용 공개 API가 없어서 FIT 직접 내보내기가 현실적인 방법. 필요해지면 별도로 설계.
 
 ## 4. FIT 트랙 목록을 국가별 탭으로 관리 — ✅ 완료
 
