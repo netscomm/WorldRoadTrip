@@ -9,7 +9,7 @@
 // client_secret.json, since this flow never holds a client secret in the
 // browser.
 
-const GOOGLE_CLIENT_ID = "REPLACE_WITH_GOOGLE_OAUTH_WEB_CLIENT_ID";
+const GOOGLE_CLIENT_ID = "6589812198-af4mrvr80b520kfg2db9rpkctkphqakv.apps.googleusercontent.com";
 const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
 const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024; // must be a multiple of 256KB
 
