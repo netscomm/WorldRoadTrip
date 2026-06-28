@@ -162,36 +162,36 @@ function buildDataJs(tracks, media) {
 }
 
 async function commitNewMedia(newMediaWithoutId) {
-  const { content, sha } = await githubGetFile(DATA_JS_PATH);
+  const { content } = await githubGetFile(DATA_JS_PATH);
   const { tracks, media } = parseDataJs(content);
   if (media.some((m) => m.path.endsWith('/' + newMediaWithoutId.basename))) {
     throw new Error('이미 추가된 영상입니다.');
   }
   const entry = { id: nextMediaId(media), ...newMediaWithoutId.entry };
   media.push(entry);
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add media entry for ${newMediaWithoutId.basename}`);
+  await githubCommitFile(DATA_JS_PATH, buildDataJs(tracks, media), `Add media entry for ${newMediaWithoutId.basename}`);
   return entry;
 }
 
 async function commitNewTrack(fname, trackWithoutId) {
-  const { content, sha } = await githubGetFile(DATA_JS_PATH);
+  const { content } = await githubGetFile(DATA_JS_PATH);
   const { tracks, media } = parseDataJs(content);
   if (tracks.some((t) => t.file === fname)) {
     throw new Error(`이미 같은 이름(${fname})의 경로가 있습니다.`);
   }
   const entry = { id: nextTrackId(tracks), ...trackWithoutId };
   tracks.push(entry);
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add FIT track ${fname}`);
+  await githubCommitFile(DATA_JS_PATH, buildDataJs(tracks, media), `Add FIT track ${fname}`);
   return entry;
 }
 
 async function commitYoutubeMapEntry(basename, videoId) {
-  const { content, sha } = await githubGetFile(YOUTUBE_MAP_PATH);
+  const { content } = await githubGetFile(YOUTUBE_MAP_PATH);
   const m = content.match(/const YOUTUBE_MAP = (\{.*\});/s);
   const map = JSON.parse(m[1]);
   map[basename] = videoId;
   const newContent = `const YOUTUBE_MAP = ${JSON.stringify(map, null, 2)};\n`;
-  await githubPutFile(YOUTUBE_MAP_PATH, newContent, sha, `Add YouTube ID for ${basename}`);
+  await githubCommitFile(YOUTUBE_MAP_PATH, newContent, `Add YouTube ID for ${basename}`);
 }
 
 const map = L.map('map');
