@@ -144,13 +144,18 @@ html, body {
 }
 
 #legend-toggle {
-  background: none;
-  border: none;
-  font-size: 12px;
+  background: #fff;
+  border: 1px solid #999;
+  border-radius: 4px;
+  font-size: 14px;
   line-height: 1;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 3px 8px;
   flex: none;
+}
+
+#legend-toggle:hover {
+  background: #eee;
 }
 
 #legend.collapsed {
