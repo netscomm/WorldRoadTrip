@@ -36,6 +36,16 @@ async function githubGetFile(path) {
     throw new Error(`GitHub API 오류 (${res.status}): ${path} 조회 실패`);
   }
   const data = await res.json();
+  // The Contents API only inlines base64 content for files under 1MB;
+  // data.js is well past that, so fall back to the raw file for anything
+  // larger (data.encoding === "none" in that case).
+  if (data.encoding === "none" || !data.content) {
+    const rawRes = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${path}`);
+    if (!rawRes.ok) {
+      throw new Error(`GitHub raw 콘텐츠 조회 실패 (${rawRes.status}): ${path}`);
+    }
+    return { content: await rawRes.text(), sha: data.sha };
+  }
   return { content: base64ToUtf8(data.content), sha: data.sha };
 }
 
