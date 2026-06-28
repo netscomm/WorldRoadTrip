@@ -188,6 +188,32 @@ function renderPanel(media, locked) {
   panelInfoEl.appendChild(copyBtn);
 }
 
+function pollUploadProgress(jobId, { progressBar, progressText, onDone, onError }) {
+  const poll = () => {
+    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+        return res.json();
+      })
+      .then((job) => {
+        if (job.status === 'error') {
+          onError(job.error || '알 수 없는 오류');
+          return;
+        }
+        if (progressBar) progressBar.style.width = `${job.progress}%`;
+        if (progressText) progressText.textContent = `${job.progress}%`;
+
+        if (job.status === 'done') {
+          onDone(job.videoId);
+          return;
+        }
+        setTimeout(poll, 1000);
+      })
+      .catch((err) => onError(err.message));
+  };
+  poll();
+}
+
 function uploadToYoutube(media, btn, progressWrap, progressBar, progressText) {
   const winPath = fileUrlToWindowsPath(media.path);
   const basename = getBasename(media);
@@ -200,32 +226,6 @@ function uploadToYoutube(media, btn, progressWrap, progressBar, progressText) {
     btn.textContent = originalText;
     progressWrap.classList.add('hidden');
     alert(`업로드 실패: ${message}\n\nscripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.`);
-  };
-
-  const poll = (jobId) => {
-    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-        return res.json();
-      })
-      .then((job) => {
-        if (job.status === 'error') {
-          fail(job.error || '알 수 없는 오류');
-          return;
-        }
-        progressBar.style.width = `${job.progress}%`;
-        progressText.textContent = `${job.progress}%`;
-
-        if (job.status === 'done') {
-          media.youtubeId = job.videoId;
-          const marker = markerById[media.id];
-          if (marker) marker.setIcon(makeMarkerIcon(media));
-          renderPanel(media, true);
-          return;
-        }
-        setTimeout(() => poll(jobId), 1000);
-      })
-      .catch((err) => fail(err.message));
   };
 
   fetch(`${UPLOAD_SERVER}/upload`, {
@@ -242,7 +242,17 @@ function uploadToYoutube(media, btn, progressWrap, progressBar, progressText) {
       progressWrap.classList.remove('hidden');
       progressBar.style.width = '0%';
       progressText.textContent = '0%';
-      poll(data.jobId);
+      pollUploadProgress(data.jobId, {
+        progressBar,
+        progressText,
+        onDone: (videoId) => {
+          media.youtubeId = videoId;
+          const marker = markerById[media.id];
+          if (marker) marker.setIcon(makeMarkerIcon(media));
+          renderPanel(media, true);
+        },
+        onError: fail,
+      });
     })
     .catch((err) => fail(err.message));
 }
@@ -483,8 +493,41 @@ unknownListCloseEl.addEventListener('click', () => {
 
 const scanBtn = document.createElement('div');
 scanBtn.className = 'row clickable unknown-toggle';
-scanBtn.innerHTML = '<span class="swatch slope-swatch">+</span><span>새 영상 스캔</span>';
+scanBtn.innerHTML = '<span class="swatch slope-swatch">+</span><span>새 영상 스캔 (이 PC만)</span>';
 legendBodyEl.appendChild(scanBtn);
+
+const fileUploadInput = document.createElement('input');
+fileUploadInput.type = 'file';
+fileUploadInput.accept = 'video/*';
+fileUploadInput.style.display = 'none';
+
+const fileUploadRow = document.createElement('div');
+fileUploadRow.className = 'row';
+const fileUploadBtn = document.createElement('button');
+fileUploadBtn.className = 'copy-btn';
+fileUploadBtn.textContent = '영상 파일 선택';
+fileUploadBtn.addEventListener('click', () => fileUploadInput.click());
+
+const fileUploadProgressWrap = document.createElement('div');
+fileUploadProgressWrap.className = 'upload-progress hidden';
+const fileUploadProgressBar = document.createElement('div');
+fileUploadProgressBar.className = 'upload-progress-bar';
+const fileUploadProgressText = document.createElement('span');
+fileUploadProgressText.className = 'upload-progress-text';
+fileUploadProgressWrap.appendChild(fileUploadProgressBar);
+fileUploadProgressWrap.appendChild(fileUploadProgressText);
+
+fileUploadRow.appendChild(fileUploadBtn);
+fileUploadRow.appendChild(fileUploadInput);
+legendBodyEl.appendChild(fileUploadRow);
+legendBodyEl.appendChild(fileUploadProgressWrap);
+
+fileUploadInput.addEventListener('change', () => {
+  const file = fileUploadInput.files[0];
+  if (!file) return;
+  uploadVideoFile(file, fileUploadBtn, fileUploadProgressWrap, fileUploadProgressBar, fileUploadProgressText);
+  fileUploadInput.value = '';
+});
 
 const newVideoListEl = document.getElementById('new-video-list');
 const newVideoListBodyEl = document.getElementById('new-video-list-body');
@@ -541,31 +584,6 @@ function addNewVideo(fileName, btn, progressWrap, progressBar, progressText, row
     alert(`추가 실패: ${message}`);
   };
 
-  const poll = (jobId, newMedia, marker) => {
-    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-        return res.json();
-      })
-      .then((job) => {
-        if (job.status === 'error') {
-          fail(job.error || '알 수 없는 오류');
-          return;
-        }
-        progressBar.style.width = `${job.progress}%`;
-        progressText.textContent = `${job.progress}%`;
-
-        if (job.status === 'done') {
-          newMedia.youtubeId = job.videoId;
-          marker.setIcon(makeMarkerIcon(newMedia));
-          row.remove();
-          return;
-        }
-        setTimeout(() => poll(jobId, newMedia, marker), 1000);
-      })
-      .catch((err) => fail(err.message));
-  };
-
   fetch(`${UPLOAD_SERVER}/add-video`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -581,9 +599,75 @@ function addNewVideo(fileName, btn, progressWrap, progressBar, progressText, row
       allBounds.push([newMedia.lat, newMedia.lon]);
       btn.textContent = '업로드 중...';
       progressWrap.classList.remove('hidden');
-      poll(jobId, newMedia, marker);
+      pollUploadProgress(jobId, {
+        progressBar,
+        progressText,
+        onDone: (videoId) => {
+          newMedia.youtubeId = videoId;
+          marker.setIcon(makeMarkerIcon(newMedia));
+          row.remove();
+        },
+        onError: fail,
+      });
     })
     .catch((err) => fail(err.message));
+}
+
+function uploadVideoFile(file, btn, progressWrap, progressBar, progressText, onDone) {
+  btn.disabled = true;
+  btn.textContent = '업로드 중...';
+  progressWrap.classList.remove('hidden');
+  progressBar.style.width = '0%';
+  progressText.textContent = '전송 중 0%';
+
+  const fail = (message) => {
+    btn.disabled = false;
+    btn.textContent = '영상 파일 선택';
+    progressWrap.classList.add('hidden');
+    alert(`업로드 실패: ${message}`);
+  };
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `${UPLOAD_SERVER}/upload-new-video`);
+  xhr.upload.addEventListener('progress', (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round((e.loaded / e.total) * 100);
+    progressBar.style.width = `${pct}%`;
+    progressText.textContent = `전송 중 ${pct}%`;
+  });
+  xhr.addEventListener('load', () => {
+    if (xhr.status < 200 || xhr.status >= 300) {
+      let message = `서버 오류 (${xhr.status})`;
+      try {
+        message = JSON.parse(xhr.responseText).error || message;
+      } catch (e) { /* ignore parse error, use default message */ }
+      fail(message);
+      return;
+    }
+    const { jobId, media: newMedia } = JSON.parse(xhr.responseText);
+    MEDIA.push(newMedia);
+    const marker = addMediaMarker(newMedia);
+    allBounds.push([newMedia.lat, newMedia.lon]);
+    progressText.textContent = '유튜브 업로드 중 0%';
+    pollUploadProgress(jobId, {
+      progressBar,
+      progressText,
+      onDone: (videoId) => {
+        newMedia.youtubeId = videoId;
+        marker.setIcon(makeMarkerIcon(newMedia));
+        progressWrap.classList.add('hidden');
+        btn.disabled = false;
+        btn.textContent = '영상 파일 선택';
+        if (onDone) onDone(newMedia);
+      },
+      onError: fail,
+    });
+  });
+  xhr.addEventListener('error', () => fail('네트워크 오류'));
+
+  const form = new FormData();
+  form.append('file', file, file.name);
+  xhr.send(form);
 }
 
 scanBtn.addEventListener('click', () => {

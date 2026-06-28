@@ -161,6 +161,43 @@ def add_video():
     return jsonify({"jobId": job_id, "media": entry})
 
 
+@app.route("/upload-new-video", methods=["POST", "OPTIONS"])
+def upload_new_video():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file provided"}), 400
+
+    basename = os.path.basename(f.filename)
+    dest = os.path.join(DJI_DIR, basename)
+
+    tracks, media = load_data_js()
+    if basename in known_basenames(media):
+        return jsonify({"error": "already added"}), 400
+    if os.path.exists(dest):
+        return jsonify({"error": f"a file named {basename} already exists on the server"}), 400
+
+    f.save(dest)
+
+    entry = build_one_media(basename, tracks, next_media_id(media))
+    if entry is None:
+        os.remove(dest)
+        return jsonify({"error": "could not determine a time/position for this file"}), 400
+
+    media.append(entry)
+    save_media(media)
+
+    job_id = str(uuid.uuid4())
+    with jobs_lock:
+        jobs[job_id] = {"status": "uploading", "progress": 0, "videoId": None, "error": None}
+    thread = threading.Thread(target=run_upload, args=(job_id, dest, basename, basename), daemon=True)
+    thread.start()
+
+    return jsonify({"jobId": job_id, "media": entry})
+
+
 def run_upload(job_id, path, basename, title):
     try:
         youtube = get_youtube_service()
