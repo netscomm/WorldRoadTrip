@@ -518,7 +518,7 @@ function getDisplayPosition(media) {
     return [media.lat, media.lon];
   }
   const ringSize = 8;
-  const radiusMeters = 6 * Math.ceil(idx / ringSize);
+  const radiusMeters = 20 * Math.ceil(idx / ringSize);
   const angle = ((idx - 1) % ringSize) * ((2 * Math.PI) / ringSize);
   const dLat = (radiusMeters / 111320) * Math.cos(angle);
   const dLon = (radiusMeters / (111320 * Math.cos((media.lat * Math.PI) / 180))) * Math.sin(angle);
@@ -528,7 +528,9 @@ function getDisplayPosition(media) {
 }
 
 function focusMedia(media) {
-  map.setView([media._displayLat ?? media.lat, media._displayLon ?? media.lon], Math.max(map.getZoom(), 15));
+  // 18, not 15: at the old default zoom a 20m nudge (see getDisplayPosition)
+  // wasn't visually distinguishable from the marker it was separated from.
+  map.setView([media._displayLat ?? media.lat, media._displayLon ?? media.lon], Math.max(map.getZoom(), 18));
   lockedMedia = media;
   renderPanel(media, true);
 }
