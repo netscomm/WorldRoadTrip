@@ -500,8 +500,35 @@ function makeMarkerIcon(media) {
 
 const markerById = {};
 
+// Several clips that fall outside every FIT track snap to the same nearest
+// boundary point (see matchMediaToTracks's estimated/boundaryMatch path),
+// which stacks their markers exactly on top of each other - the one on top
+// hides the rest with no visual sign anything else is there. Nudge each
+// marker after the first sharing a coordinate out along a small ring so
+// they're all clickable. media.lat/lon (the real matched position) is left
+// untouched; only the marker's plotted position moves.
+const overlapGroupCounts = {};
+function getDisplayPosition(media) {
+  const key = `${media.lat},${media.lon}`;
+  const idx = overlapGroupCounts[key] || 0;
+  overlapGroupCounts[key] = idx + 1;
+  if (idx === 0) {
+    media._displayLat = media.lat;
+    media._displayLon = media.lon;
+    return [media.lat, media.lon];
+  }
+  const ringSize = 8;
+  const radiusMeters = 6 * Math.ceil(idx / ringSize);
+  const angle = ((idx - 1) % ringSize) * ((2 * Math.PI) / ringSize);
+  const dLat = (radiusMeters / 111320) * Math.cos(angle);
+  const dLon = (radiusMeters / (111320 * Math.cos((media.lat * Math.PI) / 180))) * Math.sin(angle);
+  media._displayLat = media.lat + dLat;
+  media._displayLon = media.lon + dLon;
+  return [media._displayLat, media._displayLon];
+}
+
 function focusMedia(media) {
-  map.setView([media.lat, media.lon], Math.max(map.getZoom(), 15));
+  map.setView([media._displayLat ?? media.lat, media._displayLon ?? media.lon], Math.max(map.getZoom(), 15));
   lockedMedia = media;
   renderPanel(media, true);
 }
@@ -652,7 +679,7 @@ unknownListCloseEl.addEventListener('click', () => {
 });
 
 function addMediaMarker(media) {
-  const marker = L.marker([media.lat, media.lon], { icon: makeMarkerIcon(media) }).addTo(map);
+  const marker = L.marker(getDisplayPosition(media), { icon: makeMarkerIcon(media) }).addTo(map);
   markerById[media.id] = marker;
   marker.on('mouseover', () => showPreview(media));
   marker.on('mouseout', () => restoreLockedOrHide());
