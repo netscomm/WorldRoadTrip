@@ -348,18 +348,40 @@ if (allBounds.length) {
 }
 
 const legendEl = document.getElementById('legend');
+
+const legendHeaderEl = document.createElement('div');
+legendHeaderEl.id = 'legend-header';
 const legendTitle = document.createElement('div');
 legendTitle.className = 'legend-title';
 legendTitle.textContent = 'FIT 트랙 (클릭하면 해당 구간으로 이동)';
-legendEl.appendChild(legendTitle);
+const legendToggleBtn = document.createElement('button');
+legendToggleBtn.id = 'legend-toggle';
+legendHeaderEl.appendChild(legendTitle);
+legendHeaderEl.appendChild(legendToggleBtn);
+legendEl.appendChild(legendHeaderEl);
+
+const legendBodyEl = document.createElement('div');
+legendBodyEl.id = 'legend-body';
+legendEl.appendChild(legendBodyEl);
+
+const LEGEND_COLLAPSED_KEY = 'legendCollapsed';
+function setLegendCollapsed(collapsed) {
+  legendEl.classList.toggle('collapsed', collapsed);
+  legendToggleBtn.textContent = collapsed ? '▸' : '▾';
+  localStorage.setItem(LEGEND_COLLAPSED_KEY, collapsed ? '1' : '0');
+}
+legendToggleBtn.addEventListener('click', () => {
+  setLegendCollapsed(!legendEl.classList.contains('collapsed'));
+});
+setLegendCollapsed(localStorage.getItem(LEGEND_COLLAPSED_KEY) === '1');
 
 const legendCountryTabsEl = document.createElement('div');
 legendCountryTabsEl.id = 'legend-country-tabs';
-legendEl.appendChild(legendCountryTabsEl);
+legendBodyEl.appendChild(legendCountryTabsEl);
 
 const legendTracksEl = document.createElement('div');
 legendTracksEl.id = 'legend-tracks';
-legendEl.appendChild(legendTracksEl);
+legendBodyEl.appendChild(legendTracksEl);
 
 const countries = [];
 TRACKS.forEach((track) => {
@@ -408,30 +430,30 @@ if (activeCountry) {
 const estRow = document.createElement('div');
 estRow.className = 'row';
 estRow.innerHTML = '<span class="swatch" style="background:#ccc;border:1px dashed #fff"></span><span>위치 추정 (가장 가까운 FIT 트랙과 1시간 이상 차이)</span>';
-legendEl.appendChild(estRow);
+legendBodyEl.appendChild(estRow);
 
 const slopeTitle = document.createElement('div');
 slopeTitle.className = 'legend-title';
 slopeTitle.textContent = '마커 모양 (경사)';
-legendEl.appendChild(slopeTitle);
+legendBodyEl.appendChild(slopeTitle);
 
 [['uphill', '오르막'], ['downhill', '내리막'], ['flat', '평지'], ['unknown', '알 수 없음 (구간 밖)']].forEach(([key, label]) => {
   const row = document.createElement('div');
   row.className = 'row';
   row.innerHTML = `<span class="swatch slope-swatch">${SLOPE_SYMBOL[key]}</span><span>${label}</span>`;
-  legendEl.appendChild(row);
+  legendBodyEl.appendChild(row);
 });
 
 const youtubeRow = document.createElement('div');
 youtubeRow.className = 'row';
 youtubeRow.innerHTML = '<span class="swatch" style="background:#ff0000;border-radius:2px;width:9px;height:9px;font-size:6px;color:#fff;display:flex;align-items:center;justify-content:center;">▶</span><span>유튜브 업로드됨</span>';
-legendEl.appendChild(youtubeRow);
+legendBodyEl.appendChild(youtubeRow);
 
 const unknownMedia = MEDIA.filter((m) => m.slope === 'unknown');
 const unknownBtn = document.createElement('div');
 unknownBtn.className = 'row clickable unknown-toggle';
 unknownBtn.innerHTML = `<span class="swatch slope-swatch">${SLOPE_SYMBOL.unknown || '○'}</span><span>미분류 목록 보기 (${unknownMedia.length})</span>`;
-legendEl.appendChild(unknownBtn);
+legendBodyEl.appendChild(unknownBtn);
 
 const unknownListEl = document.getElementById('unknown-list');
 const unknownListBodyEl = document.getElementById('unknown-list-body');
@@ -462,7 +484,7 @@ unknownListCloseEl.addEventListener('click', () => {
 const scanBtn = document.createElement('div');
 scanBtn.className = 'row clickable unknown-toggle';
 scanBtn.innerHTML = '<span class="swatch slope-swatch">+</span><span>새 영상 스캔</span>';
-legendEl.appendChild(scanBtn);
+legendBodyEl.appendChild(scanBtn);
 
 const newVideoListEl = document.getElementById('new-video-list');
 const newVideoListBodyEl = document.getElementById('new-video-list-body');

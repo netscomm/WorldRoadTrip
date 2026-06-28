@@ -132,8 +132,38 @@ html, body {
   margin-bottom: 4px;
 }
 
+#legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#legend-header .legend-title {
+  margin-bottom: 0;
+}
+
+#legend-toggle {
+  background: none;
+  border: none;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  flex: none;
+}
+
+#legend.collapsed {
+  max-width: none;
+  padding: 6px 10px;
+}
+
+#legend.collapsed #legend-body {
+  display: none;
+}
+
 #legend-tracks {
-  max-height: 30vh;
+  max-height: 18vh;
   overflow-y: auto;
 }
 
