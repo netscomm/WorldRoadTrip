@@ -529,6 +529,96 @@ fileUploadInput.addEventListener('change', () => {
   fileUploadInput.value = '';
 });
 
+const trackTitleInput = document.createElement('input');
+trackTitleInput.type = 'text';
+trackTitleInput.placeholder = '경로 이름 (예: 알프듀에즈)';
+trackTitleInput.className = 'track-title-input';
+
+const trackFileInput = document.createElement('input');
+trackFileInput.type = 'file';
+trackFileInput.accept = '.fit';
+trackFileInput.style.display = 'none';
+
+const trackUploadRow = document.createElement('div');
+trackUploadRow.className = 'row';
+const trackUploadBtn = document.createElement('button');
+trackUploadBtn.className = 'copy-btn';
+trackUploadBtn.textContent = 'FIT 경로 추가';
+trackUploadBtn.addEventListener('click', () => {
+  if (!trackTitleInput.value.trim()) {
+    alert('경로 이름을 먼저 입력해주세요.');
+    trackTitleInput.focus();
+    return;
+  }
+  trackFileInput.click();
+});
+
+const trackUploadProgressWrap = document.createElement('div');
+trackUploadProgressWrap.className = 'upload-progress hidden';
+const trackUploadProgressBar = document.createElement('div');
+trackUploadProgressBar.className = 'upload-progress-bar';
+const trackUploadProgressText = document.createElement('span');
+trackUploadProgressText.className = 'upload-progress-text';
+trackUploadProgressWrap.appendChild(trackUploadProgressBar);
+trackUploadProgressWrap.appendChild(trackUploadProgressText);
+
+trackUploadRow.appendChild(trackTitleInput);
+trackUploadRow.appendChild(trackUploadBtn);
+trackUploadRow.appendChild(trackFileInput);
+legendBodyEl.appendChild(trackUploadRow);
+legendBodyEl.appendChild(trackUploadProgressWrap);
+
+trackFileInput.addEventListener('change', () => {
+  const file = trackFileInput.files[0];
+  if (!file) return;
+  uploadTrackFile(file, trackTitleInput.value.trim(), trackUploadBtn, trackUploadProgressWrap);
+  trackFileInput.value = '';
+});
+
+function addTrackToMap(track) {
+  const latlngs = track.points.map((p) => [p.lat, p.lon]);
+  L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  trackLatLngs[track.id] = latlngs;
+  TRACKS.push(track);
+
+  if (!countries.some((c) => c.code === track.country)) {
+    countries.push({ code: track.country, label: track.countryLabel });
+  }
+  renderCountryTabs();
+  renderTrackRows(activeCountry);
+}
+
+function uploadTrackFile(file, title, btn, progressWrap) {
+  btn.disabled = true;
+  btn.textContent = '추가 중...';
+  progressWrap.classList.remove('hidden');
+
+  const fail = (message) => {
+    btn.disabled = false;
+    btn.textContent = 'FIT 경로 추가';
+    progressWrap.classList.add('hidden');
+    alert(`추가 실패: ${message}`);
+  };
+
+  const form = new FormData();
+  form.append('file', file, file.name);
+  form.append('title', title);
+
+  fetch(`${UPLOAD_SERVER}/upload-new-track`, { method: 'POST', body: form })
+    .then((res) => {
+      if (!res.ok) return res.json().then((e) => Promise.reject(new Error(e.error || `서버 오류 (${res.status})`)));
+      return res.json();
+    })
+    .then(({ track }) => {
+      addTrackToMap(track);
+      trackTitleInput.value = '';
+      btn.disabled = false;
+      btn.textContent = 'FIT 경로 추가';
+      progressWrap.classList.add('hidden');
+    })
+    .catch((err) => fail(err.message));
+}
+
 const newVideoListEl = document.getElementById('new-video-list');
 const newVideoListBodyEl = document.getElementById('new-video-list-body');
 const newVideoListTitleEl = document.getElementById('new-video-list-title');

@@ -104,27 +104,36 @@ def parse_fit_file(path, color):
     return points
 
 
+def build_one_track(fname, track_id, color):
+    """Parses a single FIT file into a track dict. Returns None if it has no
+    usable GPS points."""
+    points = parse_fit_file(os.path.join(FIT_DIR, fname), color)
+    if not points:
+        print(f"WARN: no points found in {fname}")
+        return None
+    country, country_label = detect_country(points[0]["lat"], points[0]["lon"])
+    return {
+        "id": track_id,
+        "file": fname,
+        "color": color,
+        "points": points,
+        "startTime": points[0]["t"],
+        "endTime": points[-1]["t"],
+        "country": country,
+        "countryLabel": country_label,
+    }
+
+
 def build_tracks():
     tracks = []
     files = sorted(f for f in os.listdir(FIT_DIR) if f.lower().endswith(".fit"))
     for i, fname in enumerate(files):
         color = PALETTE[i % len(PALETTE)]
-        points = parse_fit_file(os.path.join(FIT_DIR, fname), color)
-        if not points:
-            print(f"WARN: no points found in {fname}")
+        track = build_one_track(fname, f"track{i}", color)
+        if track is None:
             continue
-        country, country_label = detect_country(points[0]["lat"], points[0]["lon"])
-        tracks.append({
-            "id": f"track{i}",
-            "file": fname,
-            "color": color,
-            "points": points,
-            "startTime": points[0]["t"],
-            "endTime": points[-1]["t"],
-            "country": country,
-            "countryLabel": country_label,
-        })
-        print(f"{fname}: {len(points)} points, {points[0]['t']} -> {points[-1]['t']}")
+        tracks.append(track)
+        print(f"{fname}: {len(track['points'])} points, {track['startTime']} -> {track['endTime']}")
     return tracks
 
 

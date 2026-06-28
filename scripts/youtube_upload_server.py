@@ -13,7 +13,9 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_data import DJI_DIR, build_one_media, build_tracks  # noqa: E402
+from build_data import (  # noqa: E402
+    DJI_DIR, FIT_DIR, PALETTE, build_one_media, build_one_track, build_tracks,
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_PATH = os.path.join(SCRIPT_DIR, "client_secret.json")
@@ -69,21 +71,31 @@ def save_youtube_map(mapping):
         f.write(";\n")
 
 
-DATA_JS_RE = re.compile(r"(const TRACKS = \[.*?\];\s*const MEDIA = )(\[.*?\]);\s*\n", re.S)
+TRACKS_RE = re.compile(r"const TRACKS = (\[.*?\]);(?=\s*const MEDIA = )", re.S)
+MEDIA_RE = re.compile(r"const MEDIA = (\[.*?\]);\s*\n", re.S)
 
 
 def load_data_js():
     content = open(DATA_JS_PATH, encoding="utf-8").read()
-    m = DATA_JS_RE.search(content)
-    tracks = json.loads(re.search(r"const TRACKS = (\[.*?\]);", content, re.S).group(1))
-    media = json.loads(m.group(2))
+    tracks = json.loads(TRACKS_RE.search(content).group(1))
+    media = json.loads(MEDIA_RE.search(content).group(1))
     return tracks, media
 
 
 def save_media(media):
     content = open(DATA_JS_PATH, encoding="utf-8").read()
-    m = DATA_JS_RE.search(content)
-    new_content = content[:m.start()] + m.group(1) + json.dumps(media, ensure_ascii=False) + ";\n" + content[m.end():]
+    new_content = MEDIA_RE.sub(
+        lambda m: "const MEDIA = " + json.dumps(media, ensure_ascii=False) + ";\n", content, count=1
+    )
+    with open(DATA_JS_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+
+def save_tracks(tracks):
+    content = open(DATA_JS_PATH, encoding="utf-8").read()
+    new_content = TRACKS_RE.sub(
+        lambda m: "const TRACKS = " + json.dumps(tracks, ensure_ascii=False) + ";", content, count=1
+    )
     with open(DATA_JS_PATH, "w", encoding="utf-8") as f:
         f.write(new_content)
 
@@ -95,6 +107,11 @@ def known_basenames(media):
 def next_media_id(media):
     used = [int(m["id"].replace("media", "")) for m in media if m["id"].startswith("media")]
     return f"media{(max(used) + 1) if used else 0}"
+
+
+def next_track_id(tracks):
+    used = [int(t["id"].replace("track", "")) for t in tracks if t["id"].startswith("track")]
+    return f"track{(max(used) + 1) if used else 0}"
 
 
 @app.after_request
@@ -196,6 +213,48 @@ def upload_new_video():
     thread.start()
 
     return jsonify({"jobId": job_id, "media": entry})
+
+
+UNSAFE_FILENAME_CHARS_RE = re.compile(r'[<>:"/\\|?*]')
+
+
+@app.route("/upload-new-track", methods=["POST", "OPTIONS"])
+def upload_new_track():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    f = request.files.get("file")
+    title = (request.form.get("title") or "").strip()
+    if not f or not f.filename:
+        return jsonify({"error": "no file provided"}), 400
+    if not title:
+        return jsonify({"error": "title is required"}), 400
+
+    tmp_path = os.path.join(FIT_DIR, f"_tmp_{uuid.uuid4().hex}.fit")
+    f.save(tmp_path)
+
+    tracks, _ = load_data_js()
+    color = PALETTE[len(tracks) % len(PALETTE)]
+    track = build_one_track(os.path.basename(tmp_path), next_track_id(tracks), color)
+    if track is None:
+        os.remove(tmp_path)
+        return jsonify({"error": "could not find any GPS points in this FIT file"}), 400
+
+    date_str = track["startTime"][:10].replace("-", "")
+    safe_title = UNSAFE_FILENAME_CHARS_RE.sub("_", title)
+    fname = f"{date_str}_{safe_title}.fit"
+    dest = os.path.join(FIT_DIR, fname)
+    if os.path.exists(dest):
+        os.remove(tmp_path)
+        return jsonify({"error": f"a track named {fname} already exists on the server"}), 400
+
+    os.rename(tmp_path, dest)
+    track["file"] = fname
+
+    tracks.append(track)
+    save_tracks(tracks)
+
+    return jsonify({"track": track})
 
 
 def run_upload(job_id, path, basename, title):
