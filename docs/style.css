@@ -323,8 +323,7 @@ html, body {
   font-weight: bold;
 }
 
-#unknown-list,
-#new-video-list {
+#unknown-list {
   position: absolute;
   left: 16px;
   top: 16px;
@@ -339,13 +338,11 @@ html, body {
   flex-direction: column;
 }
 
-#unknown-list.hidden,
-#new-video-list.hidden {
+#unknown-list.hidden {
   display: none;
 }
 
-#unknown-list-header,
-#new-video-list-header {
+#unknown-list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -355,8 +352,7 @@ html, body {
   flex: none;
 }
 
-#unknown-list-close,
-#new-video-list-close {
+#unknown-list-close {
   background: none;
   border: none;
   color: #fff;
@@ -364,8 +360,7 @@ html, body {
   cursor: pointer;
 }
 
-#unknown-list-body,
-#new-video-list-body {
+#unknown-list-body {
   overflow-y: auto;
   flex: 1;
 }

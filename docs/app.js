@@ -1,4 +1,3 @@
-const UPLOAD_SERVER = 'http://localhost:8765';
 const forceLocalSet = new Set();
 // YouTube refuses to embed video in a page loaded from file:// (origin is
 // "null"), so on this PC's local copy we always fall back to local
@@ -18,6 +17,182 @@ function getBasename(media) {
 MEDIA.forEach((media) => {
   media.youtubeId = (typeof YOUTUBE_MAP !== 'undefined' && YOUTUBE_MAP[getBasename(media)]) || null;
 });
+
+// --- New-video/new-track matching, mirroring scripts/build_data.py's
+// build_one_media()/build_one_track() now that there's no server to run
+// that Python code for us. ---
+
+const BOUNDARY_MATCH_THRESHOLD_MS = 60 * 60 * 1000;
+const SLOPE_THRESHOLD_M = 1.5;
+
+const COUNTRY_BOUNDS = [
+  ['KR', '한국', 33.0, 39.0, 124.0, 132.0],
+  ['IT', '이탈리아', 35.0, 47.5, 6.0, 19.0],
+  ['FR', '프랑스', 41.0, 51.5, -5.0, 10.0],
+  ['ES', '스페인', 36.0, 44.0, -10.0, 4.0],
+  ['US', '미국', 24.0, 49.5, -125.0, -66.0],
+];
+
+const PALETTE = [
+  '#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
+  '#46f0f0', '#f032e6', '#bcf60c', '#fabebe', '#008080',
+];
+
+function detectCountry(lat, lon) {
+  for (const [code, label, latMin, latMax, lonMin, lonMax] of COUNTRY_BOUNDS) {
+    if (lat >= latMin && lat <= latMax && lon >= lonMin && lon <= lonMax) return { code, label };
+  }
+  return { code: 'OTHER', label: '기타' };
+}
+
+function nearestTrackPoint(track, dateMs) {
+  let best = track.points[0];
+  let bestDelta = Math.abs(new Date(best.t).getTime() - dateMs);
+  for (const p of track.points) {
+    const delta = Math.abs(new Date(p.t).getTime() - dateMs);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = p;
+    }
+  }
+  return best;
+}
+
+function interpolateTrackAt(track, dateMs) {
+  const pts = track.points;
+  const times = pts.map((p) => new Date(p.t).getTime());
+  if (dateMs <= times[0]) return pts[0];
+  if (dateMs >= times[times.length - 1]) return pts[pts.length - 1];
+  let lo = 0;
+  let hi = times.length - 1;
+  while (lo < hi - 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (times[mid] <= dateMs) lo = mid;
+    else hi = mid;
+  }
+  const a = pts[lo];
+  const b = pts[hi];
+  if (times[lo] === times[hi]) return a;
+  const frac = (dateMs - times[lo]) / (times[hi] - times[lo]);
+  const lat = a.lat + (b.lat - a.lat) * frac;
+  const lon = a.lon + (b.lon - a.lon) * frac;
+  const alt = a.alt != null && b.alt != null ? a.alt + (b.alt - a.alt) * frac : null;
+  return { lat, lon, alt };
+}
+
+function classifySlope(startAlt, endAlt) {
+  if (startAlt == null || endAlt == null) return 'unknown';
+  const diff = endAlt - startAlt;
+  if (diff > SLOPE_THRESHOLD_M) return 'uphill';
+  if (diff < -SLOPE_THRESHOLD_M) return 'downhill';
+  return 'flat';
+}
+
+// Finds where a video belongs on the map: which FIT track covers its
+// capture time (or, failing that, the nearest track boundary within an
+// hour), plus the slope over its duration.
+function matchMediaToTracks(tracks, dateMs, durationSeconds) {
+  let covering = tracks.filter((t) => {
+    const s = new Date(t.startTime).getTime();
+    const e = new Date(t.endTime).getTime();
+    return s <= dateMs && dateMs <= e;
+  });
+  let boundaryMatch = false;
+  let bestTrack = null;
+  let bestPt = null;
+  let bestDelta = null;
+
+  if (covering.length === 0) {
+    for (const t of tracks) {
+      const p = nearestTrackPoint(t, dateMs);
+      const delta = Math.abs(new Date(p.t).getTime() - dateMs);
+      if (bestDelta === null || delta < bestDelta) {
+        bestDelta = delta;
+        bestTrack = t;
+        bestPt = p;
+      }
+    }
+    if (bestDelta !== null && bestDelta <= BOUNDARY_MATCH_THRESHOLD_MS) {
+      covering = [bestTrack];
+      boundaryMatch = true;
+    }
+  }
+
+  if (covering.length > 0) {
+    const track = covering[0];
+    const start = interpolateTrackAt(track, dateMs);
+    let slope = 'unknown';
+    if (durationSeconds) {
+      const end = interpolateTrackAt(track, dateMs + durationSeconds * 1000);
+      slope = classifySlope(start.alt, end.alt);
+    }
+    return { lat: start.lat, lon: start.lon, color: track.color, trackId: track.id, estimated: false, slope, boundaryMatch };
+  }
+  if (bestTrack) {
+    return { lat: bestPt.lat, lon: bestPt.lon, color: bestTrack.color, trackId: bestTrack.id, estimated: true, slope: 'unknown', boundaryMatch: false };
+  }
+  return { lat: null, lon: null, color: '#888888', trackId: null, estimated: true, slope: 'unknown', boundaryMatch: false };
+}
+
+function nextMediaId(media) {
+  const used = media.filter((m) => m.id.startsWith('media')).map((m) => parseInt(m.id.replace('media', ''), 10));
+  return `media${used.length ? Math.max(...used) + 1 : 0}`;
+}
+
+function nextTrackId(tracks) {
+  const used = tracks.filter((t) => t.id.startsWith('track')).map((t) => parseInt(t.id.replace('track', ''), 10));
+  return `track${used.length ? Math.max(...used) + 1 : 0}`;
+}
+
+// --- Direct-to-GitHub persistence (replaces "local server writes data.js,
+// someone runs git push by hand"). Always re-fetches the file right before
+// writing, so a slow upload doesn't commit over someone else's edit. ---
+
+const DATA_JS_PATH = 'docs/data.js';
+const YOUTUBE_MAP_PATH = 'docs/youtube_map.js';
+
+function parseDataJs(content) {
+  const tracksMatch = content.match(/const TRACKS = (\[.*?\]);(?=\s*const MEDIA = )/s);
+  const mediaMatch = content.match(/const MEDIA = (\[.*?\]);\s*\n/s);
+  return { tracks: JSON.parse(tracksMatch[1]), media: JSON.parse(mediaMatch[1]) };
+}
+
+function buildDataJs(tracks, media) {
+  return `const TRACKS = ${JSON.stringify(tracks)};\nconst MEDIA = ${JSON.stringify(media)};\n`;
+}
+
+async function commitNewMedia(newMediaWithoutId) {
+  const { content, sha } = await githubGetFile(DATA_JS_PATH);
+  const { tracks, media } = parseDataJs(content);
+  if (media.some((m) => m.path.endsWith('/' + newMediaWithoutId.basename))) {
+    throw new Error('이미 추가된 영상입니다.');
+  }
+  const entry = { id: nextMediaId(media), ...newMediaWithoutId.entry };
+  media.push(entry);
+  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add media entry for ${newMediaWithoutId.basename}`);
+  return entry;
+}
+
+async function commitNewTrack(fname, trackWithoutId) {
+  const { content, sha } = await githubGetFile(DATA_JS_PATH);
+  const { tracks, media } = parseDataJs(content);
+  if (tracks.some((t) => t.file === fname)) {
+    throw new Error(`이미 같은 이름(${fname})의 경로가 있습니다.`);
+  }
+  const entry = { id: nextTrackId(tracks), ...trackWithoutId };
+  tracks.push(entry);
+  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add FIT track ${fname}`);
+  return entry;
+}
+
+async function commitYoutubeMapEntry(basename, videoId) {
+  const { content, sha } = await githubGetFile(YOUTUBE_MAP_PATH);
+  const m = content.match(/const YOUTUBE_MAP = (\{.*\});/s);
+  const map = JSON.parse(m[1]);
+  map[basename] = videoId;
+  const newContent = `const YOUTUBE_MAP = ${JSON.stringify(map, null, 2)};\n`;
+  await githubPutFile(YOUTUBE_MAP_PATH, newContent, sha, `Add YouTube ID for ${basename}`);
+}
 
 const map = L.map('map');
 
@@ -188,73 +363,58 @@ function renderPanel(media, locked) {
   panelInfoEl.appendChild(copyBtn);
 }
 
-function pollUploadProgress(jobId, { progressBar, progressText, onDone, onError }) {
-  const poll = () => {
-    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-        return res.json();
-      })
-      .then((job) => {
-        if (job.status === 'error') {
-          onError(job.error || '알 수 없는 오류');
-          return;
-        }
-        if (progressBar) progressBar.style.width = `${job.progress}%`;
-        if (progressText) progressText.textContent = `${job.progress}%`;
-
-        if (job.status === 'done') {
-          onDone(job.videoId);
-          return;
-        }
-        setTimeout(poll, 1000);
-      })
-      .catch((err) => onError(err.message));
-  };
-  poll();
+// Shared by both "유튜브에 업로드" (existing marker) and the new-video file
+// picker: uploads to YouTube via OAuth, then commits the YouTube ID.
+async function runYoutubeUpload(file, basename, progressBar, progressText) {
+  const videoId = await uploadVideoToYoutube(file, basename, (frac) => {
+    const pct = Math.round(frac * 100);
+    if (progressBar) progressBar.style.width = `${pct}%`;
+    if (progressText) progressText.textContent = `업로드 중 ${pct}%`;
+  });
+  await commitYoutubeMapEntry(basename, videoId);
+  return videoId;
 }
 
 function uploadToYoutube(media, btn, progressWrap, progressBar, progressText) {
-  const winPath = fileUrlToWindowsPath(media.path);
   const basename = getBasename(media);
   const originalText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '업로드 시작 중...';
 
   const fail = (message) => {
     btn.disabled = false;
     btn.textContent = originalText;
     progressWrap.classList.add('hidden');
-    alert(`업로드 실패: ${message}\n\nscripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.`);
+    alert(`업로드 실패: ${message}`);
   };
 
-  fetch(`${UPLOAD_SERVER}/upload`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: winPath, basename, title: basename }),
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-      return res.json();
-    })
-    .then((data) => {
-      btn.textContent = '업로드 중...';
-      progressWrap.classList.remove('hidden');
-      progressBar.style.width = '0%';
-      progressText.textContent = '0%';
-      pollUploadProgress(data.jobId, {
-        progressBar,
-        progressText,
-        onDone: (videoId) => {
-          media.youtubeId = videoId;
-          const marker = markerById[media.id];
-          if (marker) marker.setIcon(makeMarkerIcon(media));
-          renderPanel(media, true);
-        },
-        onError: fail,
-      });
-    })
-    .catch((err) => fail(err.message));
+  // The browser has no path-based access to local files, so for an
+  // existing marker (added by the old local-script flow) we ask the user to
+  // re-pick the matching video before we can read its bytes.
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'video/*';
+  picker.addEventListener('change', async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    if (file.name !== basename) {
+      alert(`선택한 파일이 이 마커와 다릅니다.\n필요한 파일: ${basename}\n선택한 파일: ${file.name}`);
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = '업로드 중...';
+    progressWrap.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = '0%';
+    try {
+      const videoId = await runYoutubeUpload(file, basename, progressBar, progressText);
+      media.youtubeId = videoId;
+      const marker = markerById[media.id];
+      if (marker) marker.setIcon(makeMarkerIcon(media));
+      renderPanel(media, true);
+    } catch (e) {
+      fail(e.message);
+    }
+  });
+  picker.click();
 }
 
 function copyPathToClipboard(text, btn) {
@@ -491,10 +651,14 @@ unknownListCloseEl.addEventListener('click', () => {
   unknownListEl.classList.add('hidden');
 });
 
-const scanBtn = document.createElement('div');
-scanBtn.className = 'row clickable unknown-toggle';
-scanBtn.innerHTML = '<span class="swatch slope-swatch">+</span><span>새 영상 스캔 (이 PC만)</span>';
-legendBodyEl.appendChild(scanBtn);
+function addMediaMarker(media) {
+  const marker = L.marker([media.lat, media.lon], { icon: makeMarkerIcon(media) }).addTo(map);
+  markerById[media.id] = marker;
+  marker.on('mouseover', () => showPreview(media));
+  marker.on('mouseout', () => restoreLockedOrHide());
+  marker.on('click', () => focusMedia(media));
+  return marker;
+}
 
 const fileUploadInput = document.createElement('input');
 fileUploadInput.type = 'file';
@@ -588,7 +752,7 @@ function addTrackToMap(track) {
   renderTrackRows(activeCountry);
 }
 
-function uploadTrackFile(file, title, btn, progressWrap) {
+async function uploadTrackFile(file, title, btn, progressWrap) {
   btn.disabled = true;
   btn.textContent = '추가 중...';
   progressWrap.classList.remove('hidden');
@@ -600,189 +764,98 @@ function uploadTrackFile(file, title, btn, progressWrap) {
     alert(`추가 실패: ${message}`);
   };
 
-  const form = new FormData();
-  form.append('file', file, file.name);
-  form.append('title', title);
+  try {
+    const buf = await file.arrayBuffer();
+    const points = parseFit(buf);
+    if (!points.length) {
+      fail('FIT 파일에서 GPS 포인트를 찾지 못했습니다.');
+      return;
+    }
+    const { code, label } = detectCountry(points[0].lat, points[0].lon);
+    const dateStr = points[0].t.slice(0, 10).replace(/-/g, '');
+    const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_');
+    const fname = `${dateStr}_${safeTitle}.fit`;
 
-  fetch(`${UPLOAD_SERVER}/upload-new-track`, { method: 'POST', body: form })
-    .then((res) => {
-      if (!res.ok) return res.json().then((e) => Promise.reject(new Error(e.error || `서버 오류 (${res.status})`)));
-      return res.json();
-    })
-    .then(({ track }) => {
-      addTrackToMap(track);
-      trackTitleInput.value = '';
-      btn.disabled = false;
-      btn.textContent = 'FIT 경로 추가';
-      progressWrap.classList.add('hidden');
-    })
-    .catch((err) => fail(err.message));
-}
+    const track = await commitNewTrack(fname, {
+      file: fname,
+      color: PALETTE[TRACKS.length % PALETTE.length],
+      points,
+      startTime: points[0].t,
+      endTime: points[points.length - 1].t,
+      country: code,
+      countryLabel: label,
+    });
+    addTrackToMap(track);
 
-const newVideoListEl = document.getElementById('new-video-list');
-const newVideoListBodyEl = document.getElementById('new-video-list-body');
-const newVideoListTitleEl = document.getElementById('new-video-list-title');
-const newVideoListCloseEl = document.getElementById('new-video-list-close');
-
-function addMediaMarker(media) {
-  const marker = L.marker([media.lat, media.lon], { icon: makeMarkerIcon(media) }).addTo(map);
-  markerById[media.id] = marker;
-  marker.on('mouseover', () => showPreview(media));
-  marker.on('mouseout', () => restoreLockedOrHide());
-  marker.on('click', () => focusMedia(media));
-  return marker;
-}
-
-function renderNewVideoRow(media) {
-  const fileName = media.path.split('/').pop();
-  const row = document.createElement('div');
-  row.className = 'unknown-row';
-  row.innerHTML = `
-    <div class="unknown-row-name">${fileName}</div>
-    <div class="unknown-row-time">${media.time.replace('T', ' ')} · ${SLOPE_LABEL[media.slope] || ''}</div>
-  `;
-
-  const addBtn = document.createElement('button');
-  addBtn.className = 'copy-btn';
-  addBtn.textContent = '추가 + 업로드';
-
-  const progressWrap = document.createElement('div');
-  progressWrap.className = 'upload-progress hidden';
-  const progressBar = document.createElement('div');
-  progressBar.className = 'upload-progress-bar';
-  const progressText = document.createElement('span');
-  progressText.className = 'upload-progress-text';
-  progressWrap.appendChild(progressBar);
-  progressWrap.appendChild(progressText);
-
-  addBtn.addEventListener('click', () =>
-    addNewVideo(fileName, addBtn, progressWrap, progressBar, progressText, row)
-  );
-  row.appendChild(addBtn);
-  row.appendChild(progressWrap);
-  newVideoListBodyEl.appendChild(row);
-}
-
-function addNewVideo(fileName, btn, progressWrap, progressBar, progressText, row) {
-  btn.disabled = true;
-  btn.textContent = '추가 중...';
-
-  const fail = (message) => {
+    trackTitleInput.value = '';
     btn.disabled = false;
-    btn.textContent = '추가 + 업로드';
+    btn.textContent = 'FIT 경로 추가';
     progressWrap.classList.add('hidden');
-    alert(`추가 실패: ${message}`);
-  };
-
-  fetch(`${UPLOAD_SERVER}/add-video`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ basename: fileName }),
-  })
-    .then((res) => {
-      if (!res.ok) return res.json().then((e) => Promise.reject(new Error(e.error || `서버 오류 (${res.status})`)));
-      return res.json();
-    })
-    .then(({ jobId, media: newMedia }) => {
-      MEDIA.push(newMedia);
-      const marker = addMediaMarker(newMedia);
-      allBounds.push([newMedia.lat, newMedia.lon]);
-      btn.textContent = '업로드 중...';
-      progressWrap.classList.remove('hidden');
-      pollUploadProgress(jobId, {
-        progressBar,
-        progressText,
-        onDone: (videoId) => {
-          newMedia.youtubeId = videoId;
-          marker.setIcon(makeMarkerIcon(newMedia));
-          row.remove();
-        },
-        onError: fail,
-      });
-    })
-    .catch((err) => fail(err.message));
+  } catch (e) {
+    fail(e.message);
+  }
 }
 
-function uploadVideoFile(file, btn, progressWrap, progressBar, progressText, onDone) {
+async function uploadVideoFile(file, btn, progressWrap, progressBar, progressText) {
   btn.disabled = true;
-  btn.textContent = '업로드 중...';
+  btn.textContent = '분석 중...';
   progressWrap.classList.remove('hidden');
   progressBar.style.width = '0%';
-  progressText.textContent = '전송 중 0%';
+  progressText.textContent = '';
 
   const fail = (message) => {
     btn.disabled = false;
     btn.textContent = '영상 파일 선택';
     progressWrap.classList.add('hidden');
-    alert(`업로드 실패: ${message}`);
+    alert(`실패: ${message}`);
   };
 
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', `${UPLOAD_SERVER}/upload-new-video`);
-  xhr.upload.addEventListener('progress', (e) => {
-    if (!e.lengthComputable) return;
-    const pct = Math.round((e.loaded / e.total) * 100);
-    progressBar.style.width = `${pct}%`;
-    progressText.textContent = `전송 중 ${pct}%`;
-  });
-  xhr.addEventListener('load', () => {
-    if (xhr.status < 200 || xhr.status >= 300) {
-      let message = `서버 오류 (${xhr.status})`;
-      try {
-        message = JSON.parse(xhr.responseText).error || message;
-      } catch (e) { /* ignore parse error, use default message */ }
-      fail(message);
+  try {
+    const basename = file.name;
+    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
+      fail('이미 추가된 영상입니다.');
       return;
     }
-    const { jobId, media: newMedia } = JSON.parse(xhr.responseText);
+
+    const creationTimeUtc = await getMp4CreationTime(file);
+    if (!creationTimeUtc) {
+      fail('영상에서 촬영 시각 메타데이터를 찾지 못했습니다.');
+      return;
+    }
+    const duration = await getVideoDurationSeconds(file);
+    const localDt = new Date(creationTimeUtc.getTime() + FIT_TO_LOCAL_OFFSET_MS);
+    const match = matchMediaToTracks(TRACKS, localDt.getTime(), duration);
+
+    const entry = {
+      type: 'video',
+      path: `file:///F:/DCIM/DJI_001/${basename}`,
+      time: localDt.toISOString().replace('.000Z', '').replace('Z', ''),
+      duration,
+      lat: match.lat,
+      lon: match.lon,
+      color: match.color,
+      trackId: match.trackId,
+      estimated: match.estimated,
+      slope: match.slope,
+      timeSource: 'metadata',
+      boundaryMatch: match.boundaryMatch,
+    };
+
+    btn.textContent = '업로드 중...';
+    const videoId = await runYoutubeUpload(file, basename, progressBar, progressText);
+    entry.youtubeId = videoId;
+
+    btn.textContent = '저장 중...';
+    const newMedia = await commitNewMedia({ basename, entry });
+
     MEDIA.push(newMedia);
-    const marker = addMediaMarker(newMedia);
+    addMediaMarker(newMedia);
     allBounds.push([newMedia.lat, newMedia.lon]);
-    progressText.textContent = '유튜브 업로드 중 0%';
-    pollUploadProgress(jobId, {
-      progressBar,
-      progressText,
-      onDone: (videoId) => {
-        newMedia.youtubeId = videoId;
-        marker.setIcon(makeMarkerIcon(newMedia));
-        progressWrap.classList.add('hidden');
-        btn.disabled = false;
-        btn.textContent = '영상 파일 선택';
-        if (onDone) onDone(newMedia);
-      },
-      onError: fail,
-    });
-  });
-  xhr.addEventListener('error', () => fail('네트워크 오류'));
 
-  const form = new FormData();
-  form.append('file', file, file.name);
-  xhr.send(form);
+    btn.disabled = false;
+    btn.textContent = '영상 파일 선택';
+    progressWrap.classList.add('hidden');
+  } catch (e) {
+    fail(e.message);
+  }
 }
-
-scanBtn.addEventListener('click', () => {
-  newVideoListTitleEl.textContent = '스캔 중...';
-  newVideoListBodyEl.innerHTML = '';
-  newVideoListEl.classList.remove('hidden');
-  fetch(`${UPLOAD_SERVER}/scan-new-videos`)
-    .then((res) => {
-      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-      return res.json();
-    })
-    .then((newMediaList) => {
-      newVideoListTitleEl.textContent = `새 영상 (${newMediaList.length}개)`;
-      if (newMediaList.length === 0) {
-        newVideoListBodyEl.innerHTML = '<div class="unknown-row">새 영상이 없습니다.</div>';
-        return;
-      }
-      newMediaList.forEach((media) => renderNewVideoRow(media));
-    })
-    .catch((err) => {
-      newVideoListTitleEl.textContent = '스캔 실패';
-      newVideoListBodyEl.innerHTML =
-        `<div class="unknown-row">${err.message}<br>scripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.</div>`;
-    });
-});
-newVideoListCloseEl.addEventListener('click', () => {
-  newVideoListEl.classList.add('hidden');
-});

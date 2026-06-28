@@ -3,7 +3,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from youtube_upload_server import (  # noqa: E402
+from youtube_helpers import (  # noqa: E402
     get_youtube_service, load_youtube_map, save_youtube_map,
 )
 from googleapiclient.http import MediaFileUpload  # noqa: E402
