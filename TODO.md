@@ -13,12 +13,18 @@
 - 결과: 미분류 106→72개로 감소(34개가 경계 매칭으로 전환). 매칭 222→256개.
 - `docs/app.js`: 패널에 "(트랙 경계 지점)" 태그로 일반 매칭과 구분 표시, 범례의 "위치 추정" 설명도 "1시간 이상 차이"로 문구 수정.
 
-## 3. 새 경로/영상 업로드를 위한 웹페이지 UI (향후 핵심 기능)
+## 3. 새 경로/영상 업로드를 위한 웹페이지 UI (향후 핵심 기능) — ✅ 완료 (서버 없이 동작)
 
 - 사용자가 웹페이지에서 직접:
-  1. ✅ 완료: FIT 파일을 추가하면, 날짜 기반 이름(`20260702_{라이딩 타이틀}`)으로 새 경로가 생성·적용됨. 가민 커넥트("Export Original")나 스트라바("Export GPX")에서 내려받은 FIT 파일을 그대로 업로드하는 방식. 범례에 경로 이름 입력 + "FIT 경로 추가" 버튼.
-  2. ✅ 완료: 범례의 "새 영상 스캔" 버튼(이 PC 전용, `F:\DCIM\DJI_001` 직접 스캔) 또는 "영상 파일 선택" 버튼(어떤 기기든 파일을 골라 서버로 바이너리 전송, 모바일 포함)으로 새 영상을 추가하면 FIT 트랙과 자동 매칭 + 유튜브 업로드까지 처리.
-- 구현: `scripts/youtube_upload_server.py`에 `/scan-new-videos`, `/add-video`, `/upload-new-video`, `/upload-new-track` 엔드포인트 추가. `scripts/build_data.py`의 매칭 로직을 `build_one_media()`/`build_one_track()`으로 추출해 배치 스크립트와 서버가 공유. 프론트엔드는 `docs/app.js`/`docs/index.html`/`docs/style.css`에 새 영상 목록 패널 + FIT 업로드 폼 추가.
+  1. FIT 파일을 추가하면, 날짜 기반 이름(`20260702_{라이딩 타이틀}`)으로 새 경로가 생성·적용됨. 가민 커넥트("Export Original")나 스트라바("Export GPX")에서 내려받은 FIT 파일을 그대로 업로드하는 방식. 범례에 경로 이름 입력 + "FIT 경로 추가" 버튼.
+  2. "영상 파일 선택" 버튼으로 영상을 고르면 FIT 트랙과 자동 매칭 + 유튜브 업로드까지 처리. 어떤 기기에서든(모바일 포함) 동작.
+- **2026-06-28 업데이트: 로컬 서버(`scripts/youtube_upload_server.py`)를 완전히 제거하고 브라우저가 직접 유튜브/GitHub와 통신하도록 변경.**
+  - 유튜브 업로드: Google Identity Services OAuth + 자체 구현한 resumable upload (`docs/youtube-upload.js`). `docs/youtube-upload.js`의 `GOOGLE_CLIENT_ID`는 placeholder 상태 — 구글 클라우드 콘솔에서 Web application용 OAuth 클라이언트(Authorized JavaScript origins: `https://netscomm.github.io`)를 만들어 실제 ID로 교체해야 동작함.
+  - FIT 파싱: `docs/fit-parser.js` (브라우저에서 직접 파싱, `build_data.py`의 `parse_fit_file()`과 기존 FIT 11개 전부 포인트 수/시작·끝 시각 정확히 일치 확인).
+  - 영상 촬영 시각/길이: `docs/mp4-meta.js` (ffprobe 없이 MP4 moov/mvhd 박스를 직접 읽음, 실제 DJI 파일들로 ffprobe와 일치 확인, 17GB 파일도 10ms 내).
+  - 결과 저장: `docs/github-api.js`로 GitHub Contents API를 호출해 `docs/data.js`/`docs/youtube_map.js`에 직접 커밋 (더 이상 수동 git push 불필요). GitHub PAT는 페이지 로드마다 새로 입력받고 저장하지 않음.
+  - "새 영상 스캔"(이 PC 전용 폴더 스캔) 기능은 제거됨 — "영상 파일 선택"이 유일한 영상 추가 경로이며 처음부터 기기 무관하게 동작.
+  - `scripts/youtube_upload_server.py` 삭제. 거기 있던 OAuth/`youtube_map.js` 헬퍼는 `scripts/youtube_helpers.py`로 옮겨서 기존 로컬 배치 스크립트(`bulk_upload_youtube.py`, `upload_from_videos.py`)는 그대로 사용 가능.
 - Strava/Garmin "링크만 붙여넣으면 자동 가져오기"는 아직 미구현 — 스트라바는 [API 개발자 앱 등록](https://developers.strava.com) + OAuth로 가능(개인 계정만 쓰면 앱 심사 불필요), 가민 커넥트는 개인용 공개 API가 없어서 FIT 직접 내보내기가 현실적인 방법. 필요해지면 별도로 설계.
 
 ## 4. FIT 트랙 목록을 국가별 탭으로 관리 — ✅ 완료
