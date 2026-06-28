@@ -182,6 +182,77 @@ def classify_slope(start_alt, end_alt):
     return "flat"
 
 
+def build_one_media(fname, tracks, media_id):
+    """Computes a single media entry (time/position/slope) for one DJI clip.
+    Returns None if the file has no usable timestamp (no metadata and the
+    filename doesn't match the expected DJI naming pattern)."""
+    full_path = os.path.join(DJI_DIR, fname)
+    duration = get_video_duration(full_path)
+
+    creation_utc = get_video_creation_time_utc(full_path)
+    if creation_utc is not None:
+        italy_dt = creation_utc + LOCAL_UTC_OFFSET
+        time_source = "metadata"
+    else:
+        m = DJI_NAME_RE.match(fname)
+        if not m:
+            print(f"WARN: no metadata time and filename doesn't match pattern: {fname}")
+            return None
+        y, mo, d, h, mi, s, idx = m.groups()
+        italy_dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))
+        time_source = "filename_fallback"
+        print(f"WARN: falling back to filename time for {fname}")
+
+    # find a track whose range contains italy_dt
+    covering = [t for t in tracks if t["startTime"] <= italy_dt.isoformat() <= t["endTime"]]
+    boundary_match = False
+    best_track = best_pt = best_delta = None
+
+    if not covering:
+        # nearest point (= nearest track boundary, since italy_dt is outside the range)
+        for t in tracks:
+            p = nearest_point(t, italy_dt)
+            delta = abs(datetime.fromisoformat(p["t"]) - italy_dt)
+            if best_delta is None or delta < best_delta:
+                best_delta, best_track, best_pt = delta, t, p
+        if best_delta is not None and best_delta <= BOUNDARY_MATCH_THRESHOLD:
+            covering = [best_track]
+            boundary_match = True
+
+    if covering:
+        track = covering[0]
+        lat, lon, start_alt = interpolate_dt(track, italy_dt)
+        slope = "unknown"
+        if duration:
+            _, _, end_alt = interpolate_dt(track, italy_dt + timedelta(seconds=duration))
+            slope = classify_slope(start_alt, end_alt)
+        est = False
+    else:
+        track = best_track
+        lat, lon = (best_pt["lat"], best_pt["lon"]) if best_pt else (None, None)
+        slope = "unknown"
+        est = True
+
+    path = full_path.replace("\\", "/")
+    file_url = "file:///" + path
+
+    return {
+        "id": media_id,
+        "type": "video",
+        "path": file_url,
+        "time": italy_dt.isoformat(),
+        "duration": duration,
+        "lat": lat,
+        "lon": lon,
+        "color": track["color"] if track else "#888888",
+        "trackId": track["id"] if track else None,
+        "estimated": est,
+        "slope": slope,
+        "timeSource": time_source,
+        "boundaryMatch": boundary_match,
+    }
+
+
 def build_media(tracks):
     media = []
     files = sorted(f for f in os.listdir(DJI_DIR) if f.upper().endswith(".MP4"))
@@ -190,76 +261,18 @@ def build_media(tracks):
     boundary_matched = 0
     metadata_time_count = 0
     for i, fname in enumerate(files):
-        full_path = os.path.join(DJI_DIR, fname)
-        duration = get_video_duration(full_path)
-
-        creation_utc = get_video_creation_time_utc(full_path)
-        if creation_utc is not None:
-            italy_dt = creation_utc + LOCAL_UTC_OFFSET
-            time_source = "metadata"
+        entry = build_one_media(fname, tracks, f"media{i}")
+        if entry is None:
+            continue
+        if entry["timeSource"] == "metadata":
             metadata_time_count += 1
-        else:
-            m = DJI_NAME_RE.match(fname)
-            if not m:
-                print(f"WARN: no metadata time and filename doesn't match pattern: {fname}")
-                continue
-            y, mo, d, h, mi, s, idx = m.groups()
-            italy_dt = datetime(int(y), int(mo), int(d), int(h), int(mi), int(s))
-            time_source = "filename_fallback"
-            print(f"WARN: falling back to filename time for {fname}")
-
-        # find a track whose range contains italy_dt
-        covering = [t for t in tracks if t["startTime"] <= italy_dt.isoformat() <= t["endTime"]]
-        boundary_match = False
-        best_track = best_pt = best_delta = None
-
-        if not covering:
-            # nearest point (= nearest track boundary, since italy_dt is outside the range)
-            for t in tracks:
-                p = nearest_point(t, italy_dt)
-                delta = abs(datetime.fromisoformat(p["t"]) - italy_dt)
-                if best_delta is None or delta < best_delta:
-                    best_delta, best_track, best_pt = delta, t, p
-            if best_delta is not None and best_delta <= BOUNDARY_MATCH_THRESHOLD:
-                covering = [best_track]
-                boundary_match = True
-
-        if covering:
-            track = covering[0]
-            lat, lon, start_alt = interpolate_dt(track, italy_dt)
-            slope = "unknown"
-            if duration:
-                _, _, end_alt = interpolate_dt(track, italy_dt + timedelta(seconds=duration))
-                slope = classify_slope(start_alt, end_alt)
-            est = False
-            matched += 1
-            if boundary_match:
-                boundary_matched += 1
-        else:
-            track = best_track
-            lat, lon = best_pt["lat"], best_pt["lon"]
-            slope = "unknown"
-            est = True
+        if entry["estimated"]:
             estimated += 1
-
-        path = full_path.replace("\\", "/")
-        file_url = "file:///" + path
-
-        media.append({
-            "id": f"media{i}",
-            "type": "video",
-            "path": file_url,
-            "time": italy_dt.isoformat(),
-            "duration": duration,
-            "lat": lat,
-            "lon": lon,
-            "color": track["color"] if track else "#888888",
-            "trackId": track["id"] if track else None,
-            "estimated": est,
-            "slope": slope,
-            "timeSource": time_source,
-            "boundaryMatch": boundary_match,
-        })
+        else:
+            matched += 1
+            if entry["boundaryMatch"]:
+                boundary_matched += 1
+        media.append(entry)
 
     print(f"media total={len(media)} matched={matched} (boundary_matched={boundary_matched}) "
           f"estimated={estimated} metadata_time={metadata_time_count} "

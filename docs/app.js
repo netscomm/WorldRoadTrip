@@ -337,14 +337,8 @@ function focusMedia(media) {
 }
 
 MEDIA.forEach((media) => {
-  const marker = L.marker([media.lat, media.lon], { icon: makeMarkerIcon(media) }).addTo(map);
-  markerById[media.id] = marker;
-
+  addMediaMarker(media);
   allBounds.push([media.lat, media.lon]);
-
-  marker.on('mouseover', () => showPreview(media));
-  marker.on('mouseout', () => restoreLockedOrHide());
-  marker.on('click', () => focusMedia(media));
 });
 
 if (allBounds.length) {
@@ -463,4 +457,136 @@ unknownBtn.addEventListener('click', () => {
 });
 unknownListCloseEl.addEventListener('click', () => {
   unknownListEl.classList.add('hidden');
+});
+
+const scanBtn = document.createElement('div');
+scanBtn.className = 'row clickable unknown-toggle';
+scanBtn.innerHTML = '<span class="swatch slope-swatch">+</span><span>새 영상 스캔</span>';
+legendEl.appendChild(scanBtn);
+
+const newVideoListEl = document.getElementById('new-video-list');
+const newVideoListBodyEl = document.getElementById('new-video-list-body');
+const newVideoListTitleEl = document.getElementById('new-video-list-title');
+const newVideoListCloseEl = document.getElementById('new-video-list-close');
+
+function addMediaMarker(media) {
+  const marker = L.marker([media.lat, media.lon], { icon: makeMarkerIcon(media) }).addTo(map);
+  markerById[media.id] = marker;
+  marker.on('mouseover', () => showPreview(media));
+  marker.on('mouseout', () => restoreLockedOrHide());
+  marker.on('click', () => focusMedia(media));
+  return marker;
+}
+
+function renderNewVideoRow(media) {
+  const fileName = media.path.split('/').pop();
+  const row = document.createElement('div');
+  row.className = 'unknown-row';
+  row.innerHTML = `
+    <div class="unknown-row-name">${fileName}</div>
+    <div class="unknown-row-time">${media.time.replace('T', ' ')} · ${SLOPE_LABEL[media.slope] || ''}</div>
+  `;
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'copy-btn';
+  addBtn.textContent = '추가 + 업로드';
+
+  const progressWrap = document.createElement('div');
+  progressWrap.className = 'upload-progress hidden';
+  const progressBar = document.createElement('div');
+  progressBar.className = 'upload-progress-bar';
+  const progressText = document.createElement('span');
+  progressText.className = 'upload-progress-text';
+  progressWrap.appendChild(progressBar);
+  progressWrap.appendChild(progressText);
+
+  addBtn.addEventListener('click', () =>
+    addNewVideo(fileName, addBtn, progressWrap, progressBar, progressText, row)
+  );
+  row.appendChild(addBtn);
+  row.appendChild(progressWrap);
+  newVideoListBodyEl.appendChild(row);
+}
+
+function addNewVideo(fileName, btn, progressWrap, progressBar, progressText, row) {
+  btn.disabled = true;
+  btn.textContent = '추가 중...';
+
+  const fail = (message) => {
+    btn.disabled = false;
+    btn.textContent = '추가 + 업로드';
+    progressWrap.classList.add('hidden');
+    alert(`추가 실패: ${message}`);
+  };
+
+  const poll = (jobId, newMedia, marker) => {
+    fetch(`${UPLOAD_SERVER}/progress/${jobId}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+        return res.json();
+      })
+      .then((job) => {
+        if (job.status === 'error') {
+          fail(job.error || '알 수 없는 오류');
+          return;
+        }
+        progressBar.style.width = `${job.progress}%`;
+        progressText.textContent = `${job.progress}%`;
+
+        if (job.status === 'done') {
+          newMedia.youtubeId = job.videoId;
+          marker.setIcon(makeMarkerIcon(newMedia));
+          row.remove();
+          return;
+        }
+        setTimeout(() => poll(jobId, newMedia, marker), 1000);
+      })
+      .catch((err) => fail(err.message));
+  };
+
+  fetch(`${UPLOAD_SERVER}/add-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ basename: fileName }),
+  })
+    .then((res) => {
+      if (!res.ok) return res.json().then((e) => Promise.reject(new Error(e.error || `서버 오류 (${res.status})`)));
+      return res.json();
+    })
+    .then(({ jobId, media: newMedia }) => {
+      MEDIA.push(newMedia);
+      const marker = addMediaMarker(newMedia);
+      allBounds.push([newMedia.lat, newMedia.lon]);
+      btn.textContent = '업로드 중...';
+      progressWrap.classList.remove('hidden');
+      poll(jobId, newMedia, marker);
+    })
+    .catch((err) => fail(err.message));
+}
+
+scanBtn.addEventListener('click', () => {
+  newVideoListTitleEl.textContent = '스캔 중...';
+  newVideoListBodyEl.innerHTML = '';
+  newVideoListEl.classList.remove('hidden');
+  fetch(`${UPLOAD_SERVER}/scan-new-videos`)
+    .then((res) => {
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+      return res.json();
+    })
+    .then((newMediaList) => {
+      newVideoListTitleEl.textContent = `새 영상 (${newMediaList.length}개)`;
+      if (newMediaList.length === 0) {
+        newVideoListBodyEl.innerHTML = '<div class="unknown-row">새 영상이 없습니다.</div>';
+        return;
+      }
+      newMediaList.forEach((media) => renderNewVideoRow(media));
+    })
+    .catch((err) => {
+      newVideoListTitleEl.textContent = '스캔 실패';
+      newVideoListBodyEl.innerHTML =
+        `<div class="unknown-row">${err.message}<br>scripts/youtube_upload_server.py 가 실행 중인지 확인해주세요.</div>`;
+    });
+});
+newVideoListCloseEl.addEventListener('click', () => {
+  newVideoListEl.classList.add('hidden');
 });

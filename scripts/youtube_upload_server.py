@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import threading
 import uuid
 
@@ -11,10 +12,14 @@ from google.auth.transport.requests import Request as GoogleRequest
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from build_data import DJI_DIR, build_one_media, build_tracks  # noqa: E402
+
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRET_PATH = os.path.join(SCRIPT_DIR, "client_secret.json")
 TOKEN_PATH = os.path.join(SCRIPT_DIR, "token.json")
 YOUTUBE_MAP_PATH = os.path.join(SCRIPT_DIR, "..", "docs", "youtube_map.js")
+DATA_JS_PATH = os.path.join(SCRIPT_DIR, "..", "docs", "data.js")
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 DEFAULT_PRIVACY = "unlisted"
 PORT = 8765
@@ -64,6 +69,34 @@ def save_youtube_map(mapping):
         f.write(";\n")
 
 
+DATA_JS_RE = re.compile(r"(const TRACKS = \[.*?\];\s*const MEDIA = )(\[.*?\]);\s*\n", re.S)
+
+
+def load_data_js():
+    content = open(DATA_JS_PATH, encoding="utf-8").read()
+    m = DATA_JS_RE.search(content)
+    tracks = json.loads(re.search(r"const TRACKS = (\[.*?\]);", content, re.S).group(1))
+    media = json.loads(m.group(2))
+    return tracks, media
+
+
+def save_media(media):
+    content = open(DATA_JS_PATH, encoding="utf-8").read()
+    m = DATA_JS_RE.search(content)
+    new_content = content[:m.start()] + m.group(1) + json.dumps(media, ensure_ascii=False) + ";\n" + content[m.end():]
+    with open(DATA_JS_PATH, "w", encoding="utf-8") as f:
+        f.write(new_content)
+
+
+def known_basenames(media):
+    return {m["path"].rsplit("/", 1)[-1] for m in media}
+
+
+def next_media_id(media):
+    used = [int(m["id"].replace("media", "")) for m in media if m["id"].startswith("media")]
+    return f"media{(max(used) + 1) if used else 0}"
+
+
 @app.after_request
 def add_cors_headers(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
@@ -75,6 +108,57 @@ def add_cors_headers(resp):
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/scan-new-videos", methods=["GET"])
+def scan_new_videos():
+    tracks, media = load_data_js()
+    known = known_basenames(media)
+    mapping = load_youtube_map()
+    all_files = sorted(f for f in os.listdir(DJI_DIR) if f.upper().endswith(".MP4"))
+    new_files = [f for f in all_files if f not in known]
+
+    results = []
+    next_idx = max([int(m["id"].replace("media", "")) for m in media], default=-1) + 1
+    for i, fname in enumerate(new_files):
+        entry = build_one_media(fname, tracks, f"media{next_idx + i}")
+        if entry is None:
+            continue
+        entry["alreadyUploaded"] = fname in mapping
+        results.append(entry)
+    return jsonify(results)
+
+
+@app.route("/add-video", methods=["POST", "OPTIONS"])
+def add_video():
+    if request.method == "OPTIONS":
+        return "", 204
+
+    data = request.get_json(force=True)
+    basename = data.get("basename")
+    path = os.path.join(DJI_DIR, basename) if basename else None
+
+    if not basename or not os.path.exists(path):
+        return jsonify({"error": f"file not found: {basename}"}), 400
+
+    tracks, media = load_data_js()
+    if basename in known_basenames(media):
+        return jsonify({"error": "already added"}), 400
+
+    entry = build_one_media(basename, tracks, next_media_id(media))
+    if entry is None:
+        return jsonify({"error": "could not determine a time/position for this file"}), 400
+
+    media.append(entry)
+    save_media(media)
+
+    job_id = str(uuid.uuid4())
+    with jobs_lock:
+        jobs[job_id] = {"status": "uploading", "progress": 0, "videoId": None, "error": None}
+    thread = threading.Thread(target=run_upload, args=(job_id, path, basename, basename), daemon=True)
+    thread.start()
+
+    return jsonify({"jobId": job_id, "media": entry})
 
 
 def run_upload(job_id, path, basename, title):
