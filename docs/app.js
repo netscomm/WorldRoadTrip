@@ -792,7 +792,7 @@ const ytUrlRow = document.createElement('div');
 ytUrlRow.className = 'row';
 const ytUrlBtn = document.createElement('button');
 ytUrlBtn.className = 'copy-btn';
-ytUrlBtn.textContent = '영상 파일 선택';
+ytUrlBtn.textContent = '파일 선택';
 ytUrlBtn.addEventListener('click', () => {
   const youtubeId = extractYoutubeId(ytUrlInput.value.trim());
   if (!youtubeId) {
@@ -822,7 +822,7 @@ async function linkYoutubeToFile(file, youtubeId, btn, urlInput) {
 
   const fail = (msg) => {
     btn.disabled = false;
-    btn.textContent = '영상 파일 선택';
+    btn.textContent = '파일 선택';
     alert(`실패: ${msg}`);
   };
 
@@ -868,7 +868,7 @@ async function linkYoutubeToFile(file, youtubeId, btn, urlInput) {
 
     urlInput.value = '';
     btn.disabled = false;
-    btn.textContent = '영상 파일 선택';
+    btn.textContent = '파일 선택';
   } catch (e) {
     fail(e.message);
   }
