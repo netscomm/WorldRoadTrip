@@ -698,7 +698,7 @@ const fileUploadRow = document.createElement('div');
 fileUploadRow.className = 'row';
 const fileUploadBtn = document.createElement('button');
 fileUploadBtn.className = 'copy-btn';
-fileUploadBtn.textContent = '영상 파일 선택';
+fileUploadBtn.textContent = '동영상 파일 선택 (유튜브 업로드)';
 fileUploadBtn.addEventListener('click', () => fileUploadInput.click());
 
 const fileUploadProgressWrap = document.createElement('div');
@@ -792,7 +792,7 @@ const ytUrlRow = document.createElement('div');
 ytUrlRow.className = 'row';
 const ytUrlBtn = document.createElement('button');
 ytUrlBtn.className = 'copy-btn';
-ytUrlBtn.textContent = '파일 선택';
+ytUrlBtn.textContent = '유튜브 URL 적용';
 ytUrlBtn.addEventListener('click', () => {
   const youtubeId = extractYoutubeId(ytUrlInput.value.trim());
   if (!youtubeId) {
@@ -822,7 +822,7 @@ async function linkYoutubeToFile(file, youtubeId, btn, urlInput) {
 
   const fail = (msg) => {
     btn.disabled = false;
-    btn.textContent = '파일 선택';
+    btn.textContent = '유튜브 URL 적용';
     alert(`실패: ${msg}`);
   };
 
@@ -868,7 +868,7 @@ async function linkYoutubeToFile(file, youtubeId, btn, urlInput) {
 
     urlInput.value = '';
     btn.disabled = false;
-    btn.textContent = '파일 선택';
+    btn.textContent = '유튜브 URL 적용';
   } catch (e) {
     fail(e.message);
   }
@@ -940,7 +940,7 @@ async function uploadVideoFile(file, btn, progressWrap, progressBar, progressTex
 
   const fail = (message) => {
     btn.disabled = false;
-    btn.textContent = '영상 파일 선택';
+    btn.textContent = '동영상 파일 선택 (유튜브 업로드)';
     progressWrap.classList.add('hidden');
     alert(`실패: ${message}`);
   };
@@ -988,7 +988,7 @@ async function uploadVideoFile(file, btn, progressWrap, progressBar, progressTex
     allBounds.push([newMedia.lat, newMedia.lon]);
 
     btn.disabled = false;
-    btn.textContent = '영상 파일 선택';
+    btn.textContent = '동영상 파일 선택 (유튜브 업로드)';
     progressWrap.classList.add('hidden');
   } catch (e) {
     fail(e.message);
