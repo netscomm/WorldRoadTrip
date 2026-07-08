@@ -443,3 +443,62 @@ html, body {
     max-height: 40vh;
   }
 }
+
+/* ── 날짜 입력 팝업 모달 ── */
+#dt-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#dt-modal.hidden { display: none; }
+#dt-modal-box {
+  background: #222;
+  color: #eee;
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 280px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+#dt-modal-title { font-weight: bold; font-size: 14px; }
+#dt-modal-hint { font-size: 11px; color: #aaa; }
+#dt-modal-input {
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 14px;
+  width: 100%;
+  box-sizing: border-box;
+}
+#dt-modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+#dt-modal-btns button {
+  padding: 7px 18px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+}
+#dt-modal-cancel { background: #444; color: #eee; }
+#dt-modal-ok { background: #d33; color: #fff; }
+
+/* FIT 트랙 삭제 버튼 */
+.track-del-btn {
+  background: none;
+  border: none;
+  color: #c44;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex: none;
+  line-height: 1;
+  margin-left: auto;
+}
+.track-del-btn:hover { color: #f33; }

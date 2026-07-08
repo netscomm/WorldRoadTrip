@@ -203,10 +203,11 @@ const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.pn
 
 const allBounds = [];
 const trackLatLngs = {};
+const polylineById = {};
 
 TRACKS.forEach((track) => {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
-  L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  polylineById[track.id] = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
   allBounds.push(...latlngs);
   trackLatLngs[track.id] = latlngs;
 });
@@ -628,13 +629,60 @@ function renderTrackRows(country) {
   legendTracksEl.innerHTML = '';
   TRACKS.filter((track) => track.country === country).forEach((track) => {
     const row = document.createElement('div');
-    row.className = 'row clickable';
-    row.innerHTML = `<span class="swatch" style="background:${track.color}"></span><span>${track.file}</span>`;
-    row.addEventListener('click', () => {
-      map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] });
-    });
+    row.className = 'row';
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'clickable';
+    nameSpan.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;cursor:pointer';
+    nameSpan.innerHTML = `<span class="swatch" style="background:${track.color}"></span>${track.file}`;
+    nameSpan.addEventListener('click', () => map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] }));
+    nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
+    nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'track-del-btn';
+    delBtn.textContent = '×';
+    delBtn.title = '이 경로 삭제';
+    delBtn.addEventListener('click', () => deleteTrack(track));
+
+    row.appendChild(nameSpan);
+    row.appendChild(delBtn);
     legendTracksEl.appendChild(row);
   });
+}
+
+async function deleteTrack(track) {
+  if (!confirm(`"${track.file}" 경로를 삭제하시겠습니까?\n지도에서 경로선이 사라집니다. (마커 위치는 유지됩니다.)`)) return;
+  try {
+    const { content, sha } = await githubGetFile(DATA_JS_PATH);
+    const { tracks, media } = parseDataJs(content);
+    const newTracks = tracks.filter((t) => t.id !== track.id);
+    await githubPutFile(DATA_JS_PATH, buildDataJs(newTracks, media), sha, `Remove FIT track ${track.file}`);
+
+    const idx = TRACKS.findIndex((t) => t.id === track.id);
+    if (idx !== -1) TRACKS.splice(idx, 1);
+
+    if (polylineById[track.id]) {
+      polylineById[track.id].remove();
+      delete polylineById[track.id];
+    }
+
+    const countryIdx = countries.findIndex((c) => c.code === track.country);
+    if (countryIdx !== -1 && !TRACKS.some((t) => t.country === track.country)) {
+      countries.splice(countryIdx, 1);
+      if (activeCountry === track.country) {
+        activeCountry = countries.length ? countries[0].code : null;
+      }
+    }
+
+    renderCountryTabs();
+    if (activeCountry) renderTrackRows(activeCountry);
+    else legendTracksEl.innerHTML = '';
+  } catch (e) {
+    alert(`삭제 실패: ${e.message}`);
+  }
 }
 
 function renderCountryTabs() {
@@ -806,207 +854,95 @@ function extractYoutubeId(url) {
   return m ? m[1] : null;
 }
 
-// ── 이미 유튜브에 올라간 영상 마커 추가 (재업로드 없음) ─────────────
-// 1단계: 유튜브 URL 붙여넣기
-// 2단계: 영상 파일 선택 → 위치 정보만 추출, 유튜브 업로드는 하지 않음
-const ytLinkUrlInput = document.createElement('input');
-ytLinkUrlInput.type = 'url';
-ytLinkUrlInput.placeholder = '① 유튜브 URL 붙여넣기';
-ytLinkUrlInput.className = 'track-title-input';
-
-const ytLinkFileInput = document.createElement('input');
-ytLinkFileInput.type = 'file';
-ytLinkFileInput.accept = 'video/*';
-ytLinkFileInput.style.display = 'none';
-
-const ytLinkRow = document.createElement('div');
-ytLinkRow.className = 'row';
-const ytLinkBtn = document.createElement('button');
-ytLinkBtn.className = 'copy-btn';
-ytLinkBtn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
-ytLinkBtn.addEventListener('click', () => {
-  const youtubeId = extractYoutubeId(ytLinkUrlInput.value.trim());
-  if (!youtubeId) {
-    alert('① 유튜브 URL을 먼저 붙여넣어 주세요.\n예: https://youtu.be/abcdefghijk');
-    ytLinkUrlInput.focus();
-    return;
-  }
-  ytLinkFileInput.click();
-});
-
-const ytLinkProgressWrap = document.createElement('div');
-ytLinkProgressWrap.className = 'upload-progress hidden';
-const ytLinkProgressBar = document.createElement('div');
-ytLinkProgressBar.className = 'upload-progress-bar';
-const ytLinkProgressText = document.createElement('span');
-ytLinkProgressText.className = 'upload-progress-text';
-ytLinkProgressWrap.appendChild(ytLinkProgressBar);
-ytLinkProgressWrap.appendChild(ytLinkProgressText);
-
-ytLinkRow.appendChild(ytLinkUrlInput);
-ytLinkRow.appendChild(ytLinkBtn);
-ytLinkRow.appendChild(ytLinkFileInput);
-legendBodyEl.appendChild(ytLinkRow);
-legendBodyEl.appendChild(ytLinkProgressWrap);
-
-ytLinkFileInput.addEventListener('change', () => {
-  const file = ytLinkFileInput.files[0];
-  if (!file) return;
-  const youtubeId = extractYoutubeId(ytLinkUrlInput.value.trim());
-  addMarkerWithExistingYoutubeId(file, youtubeId, ytLinkBtn, ytLinkUrlInput, ytLinkProgressWrap, ytLinkProgressBar, ytLinkProgressText);
-  ytLinkFileInput.value = '';
-});
-
-async function addMarkerWithExistingYoutubeId(file, youtubeId, btn, urlInput, progressWrap, progressBar, progressText) {
-  btn.disabled = true;
-  btn.textContent = '추가 중...';
-  progressWrap.classList.remove('hidden');
-  progressBar.style.width = '0%';
-  progressText.textContent = '위치 분석 중...';
-
-  const fail = (msg) => {
-    btn.disabled = false;
-    btn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
-    progressWrap.classList.add('hidden');
-    alert(`실패: ${msg}`);
-  };
-
-  try {
-    const basename = file.name;
-    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
-      fail('이미 추가된 영상입니다.');
-      return;
-    }
-    const creationTimeUtc = await getMp4CreationTime(file);
-    if (!creationTimeUtc) {
-      fail('영상에서 촬영 시각 메타데이터를 찾지 못했습니다.');
-      return;
-    }
-    const duration = await getVideoDurationSeconds(file);
-    const localDt = new Date(creationTimeUtc.getTime() + FIT_TO_LOCAL_OFFSET_MS);
-    const match = matchMediaToTracks(TRACKS, localDt.getTime(), duration);
-
-    const entry = {
-      type: 'video',
-      path: `file:///F:/DCIM/DJI_001/${basename}`,
-      time: localDt.toISOString().replace('.000Z', '').replace('Z', ''),
-      duration,
-      lat: match.lat,
-      lon: match.lon,
-      color: match.color,
-      trackId: match.trackId,
-      estimated: match.estimated,
-      slope: match.slope,
-      timeSource: 'metadata',
-      boundaryMatch: match.boundaryMatch,
+// ── 이미 유튜브에 있는 영상: URL 붙여넣기 → 팝업에서 날짜 입력 → 마커 추가 ──
+function showDatetimeModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('dt-modal');
+    const input = document.getElementById('dt-modal-input');
+    const okBtn = document.getElementById('dt-modal-ok');
+    const cancelBtn = document.getElementById('dt-modal-cancel');
+    modal.classList.remove('hidden');
+    input.value = '';
+    setTimeout(() => input.focus(), 100);
+    const finish = (result) => {
+      modal.classList.add('hidden');
+      okBtn.replaceWith(okBtn.cloneNode(true));
+      cancelBtn.replaceWith(cancelBtn.cloneNode(true));
+      resolve(result);
     };
-
-    progressText.textContent = '저장 중...';
-    const newMedia = await commitNewMedia({ basename, entry });
-    await commitYoutubeMapEntry(basename, youtubeId);
-
-    newMedia.youtubeId = youtubeId;
-    MEDIA.push(newMedia);
-    addMediaMarker(newMedia);
-    allBounds.push([newMedia.lat, newMedia.lon]);
-
-    urlInput.value = '';
-    btn.disabled = false;
-    btn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
-    progressWrap.classList.add('hidden');
-  } catch (e) {
-    fail(e.message);
-  }
+    document.getElementById('dt-modal-ok').addEventListener('click', () => {
+      if (!document.getElementById('dt-modal-input').value) return;
+      finish(new Date(document.getElementById('dt-modal-input').value));
+    });
+    document.getElementById('dt-modal-cancel').addEventListener('click', () => finish(null));
+    document.getElementById('dt-modal-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { if (e.target.value) finish(new Date(e.target.value)); }
+      else if (e.key === 'Escape') finish(null);
+    });
+  });
 }
 
-// ── 파일 없이 날짜/시각 입력만으로 마커 추가 ─────────────────────────
-// 이미 유튜브에 올린 영상의 URL + 촬영 날짜·시각 → FIT 트랙 자동 매칭
-// 브라우저의 현지 시각(device timezone)을 UTC로 변환하고 FIT_TO_LOCAL_OFFSET_MS를
-// 더해서 기존 FIT 포인트들과 동일한 기준으로 비교합니다.
-const ytDateUrlInput = document.createElement('input');
-ytDateUrlInput.type = 'url';
-ytDateUrlInput.placeholder = '유튜브 URL';
-ytDateUrlInput.className = 'track-title-input';
+const ytSimpleUrlInput = document.createElement('input');
+ytSimpleUrlInput.type = 'url';
+ytSimpleUrlInput.placeholder = '유튜브 URL 붙여넣기 (이미 올린 영상)';
+ytSimpleUrlInput.className = 'track-title-input';
 
-const ytDateTimeInput = document.createElement('input');
-ytDateTimeInput.type = 'datetime-local';
-ytDateTimeInput.className = 'track-title-input';
-ytDateTimeInput.style.flex = '0 0 auto';
-
-const ytDateRow = document.createElement('div');
-ytDateRow.className = 'row';
-const ytDateBtn = document.createElement('button');
-ytDateBtn.className = 'copy-btn';
-ytDateBtn.textContent = '마커 추가';
-ytDateBtn.addEventListener('click', async () => {
-  const youtubeId = extractYoutubeId(ytDateUrlInput.value.trim());
+const ytSimpleRow = document.createElement('div');
+ytSimpleRow.className = 'row';
+const ytSimpleBtn = document.createElement('button');
+ytSimpleBtn.className = 'copy-btn';
+ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+ytSimpleBtn.addEventListener('click', async () => {
+  const youtubeId = extractYoutubeId(ytSimpleUrlInput.value.trim());
   if (!youtubeId) {
-    alert('유튜브 URL을 입력해주세요.');
-    ytDateUrlInput.focus();
+    alert('올바른 유튜브 URL을 입력해주세요.\n예: https://youtu.be/abcdefghijk');
+    ytSimpleUrlInput.focus();
     return;
   }
-  if (!ytDateTimeInput.value) {
-    alert('촬영 날짜·시각을 입력해주세요.');
-    ytDateTimeInput.focus();
-    return;
-  }
+  const filmingDate = await showDatetimeModal();
+  if (!filmingDate) return;
 
-  ytDateBtn.disabled = true;
-  ytDateBtn.textContent = '추가 중...';
-
+  ytSimpleBtn.disabled = true;
+  ytSimpleBtn.textContent = '추가 중...';
   try {
-    const basename = `yt_${youtubeId}`;
+    const basename = 'yt_' + youtubeId;
     if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
       throw new Error('이미 추가된 영상입니다.');
     }
-
-    // datetime-local → UTC (device timezone) → +FIT_TO_LOCAL_OFFSET_MS
-    const dateMs = new Date(ytDateTimeInput.value).getTime() + FIT_TO_LOCAL_OFFSET_MS;
+    const dateMs = filmingDate.getTime() + FIT_TO_LOCAL_OFFSET_MS;
     const match = matchMediaToTracks(TRACKS, dateMs, null);
-
     const isoTime = new Date(dateMs).toISOString().replace('.000Z', '').replace('Z', '');
     const entry = {
       type: 'video',
-      path: `file:///youtube/${basename}`,
+      path: 'file:///youtube/' + basename,
       time: isoTime,
       duration: null,
-      lat: match.lat,
-      lon: match.lon,
-      color: match.color,
-      trackId: match.trackId,
-      estimated: match.estimated,
-      slope: match.slope,
-      timeSource: 'manual',
-      boundaryMatch: match.boundaryMatch,
+      lat: match.lat, lon: match.lon, color: match.color,
+      trackId: match.trackId, estimated: match.estimated,
+      slope: match.slope, timeSource: 'manual', boundaryMatch: match.boundaryMatch,
     };
-
     const newMedia = await commitNewMedia({ basename, entry });
     await commitYoutubeMapEntry(basename, youtubeId);
-
     newMedia.youtubeId = youtubeId;
     MEDIA.push(newMedia);
     addMediaMarker(newMedia);
     allBounds.push([newMedia.lat, newMedia.lon]);
-
-    ytDateUrlInput.value = '';
-    ytDateTimeInput.value = '';
-    ytDateBtn.textContent = '마커 추가';
-    ytDateBtn.disabled = false;
+    ytSimpleUrlInput.value = '';
+    ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+    ytSimpleBtn.disabled = false;
   } catch (e) {
-    ytDateBtn.textContent = '마커 추가';
-    ytDateBtn.disabled = false;
-    alert(`실패: ${e.message}`);
+    ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+    ytSimpleBtn.disabled = false;
+    alert('실패: ' + e.message);
   }
 });
-
-ytDateRow.appendChild(ytDateUrlInput);
-ytDateRow.appendChild(ytDateTimeInput);
-ytDateRow.appendChild(ytDateBtn);
-legendBodyEl.appendChild(ytDateRow);
+ytSimpleRow.appendChild(ytSimpleUrlInput);
+ytSimpleRow.appendChild(ytSimpleBtn);
+legendBodyEl.appendChild(ytSimpleRow);
 
 function addTrackToMap(track) {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
-  L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  polylineById[track.id] = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
   trackLatLngs[track.id] = latlngs;
   TRACKS.push(track);
 
