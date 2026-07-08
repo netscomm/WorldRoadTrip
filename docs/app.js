@@ -806,6 +806,119 @@ function extractYoutubeId(url) {
   return m ? m[1] : null;
 }
 
+// ── 이미 유튜브에 올라간 영상 마커 추가 (재업로드 없음) ─────────────
+// 1단계: 유튜브 URL 붙여넣기
+// 2단계: 영상 파일 선택 → 위치 정보만 추출, 유튜브 업로드는 하지 않음
+const ytLinkUrlInput = document.createElement('input');
+ytLinkUrlInput.type = 'url';
+ytLinkUrlInput.placeholder = '① 유튜브 URL 붙여넣기';
+ytLinkUrlInput.className = 'track-title-input';
+
+const ytLinkFileInput = document.createElement('input');
+ytLinkFileInput.type = 'file';
+ytLinkFileInput.accept = 'video/*';
+ytLinkFileInput.style.display = 'none';
+
+const ytLinkRow = document.createElement('div');
+ytLinkRow.className = 'row';
+const ytLinkBtn = document.createElement('button');
+ytLinkBtn.className = 'copy-btn';
+ytLinkBtn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
+ytLinkBtn.addEventListener('click', () => {
+  const youtubeId = extractYoutubeId(ytLinkUrlInput.value.trim());
+  if (!youtubeId) {
+    alert('① 유튜브 URL을 먼저 붙여넣어 주세요.\n예: https://youtu.be/abcdefghijk');
+    ytLinkUrlInput.focus();
+    return;
+  }
+  ytLinkFileInput.click();
+});
+
+const ytLinkProgressWrap = document.createElement('div');
+ytLinkProgressWrap.className = 'upload-progress hidden';
+const ytLinkProgressBar = document.createElement('div');
+ytLinkProgressBar.className = 'upload-progress-bar';
+const ytLinkProgressText = document.createElement('span');
+ytLinkProgressText.className = 'upload-progress-text';
+ytLinkProgressWrap.appendChild(ytLinkProgressBar);
+ytLinkProgressWrap.appendChild(ytLinkProgressText);
+
+ytLinkRow.appendChild(ytLinkUrlInput);
+ytLinkRow.appendChild(ytLinkBtn);
+ytLinkRow.appendChild(ytLinkFileInput);
+legendBodyEl.appendChild(ytLinkRow);
+legendBodyEl.appendChild(ytLinkProgressWrap);
+
+ytLinkFileInput.addEventListener('change', () => {
+  const file = ytLinkFileInput.files[0];
+  if (!file) return;
+  const youtubeId = extractYoutubeId(ytLinkUrlInput.value.trim());
+  addMarkerWithExistingYoutubeId(file, youtubeId, ytLinkBtn, ytLinkUrlInput, ytLinkProgressWrap, ytLinkProgressBar, ytLinkProgressText);
+  ytLinkFileInput.value = '';
+});
+
+async function addMarkerWithExistingYoutubeId(file, youtubeId, btn, urlInput, progressWrap, progressBar, progressText) {
+  btn.disabled = true;
+  btn.textContent = '추가 중...';
+  progressWrap.classList.remove('hidden');
+  progressBar.style.width = '0%';
+  progressText.textContent = '위치 분석 중...';
+
+  const fail = (msg) => {
+    btn.disabled = false;
+    btn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
+    progressWrap.classList.add('hidden');
+    alert(`실패: ${msg}`);
+  };
+
+  try {
+    const basename = file.name;
+    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
+      fail('이미 추가된 영상입니다.');
+      return;
+    }
+    const creationTimeUtc = await getMp4CreationTime(file);
+    if (!creationTimeUtc) {
+      fail('영상에서 촬영 시각 메타데이터를 찾지 못했습니다.');
+      return;
+    }
+    const duration = await getVideoDurationSeconds(file);
+    const localDt = new Date(creationTimeUtc.getTime() + FIT_TO_LOCAL_OFFSET_MS);
+    const match = matchMediaToTracks(TRACKS, localDt.getTime(), duration);
+
+    const entry = {
+      type: 'video',
+      path: `file:///F:/DCIM/DJI_001/${basename}`,
+      time: localDt.toISOString().replace('.000Z', '').replace('Z', ''),
+      duration,
+      lat: match.lat,
+      lon: match.lon,
+      color: match.color,
+      trackId: match.trackId,
+      estimated: match.estimated,
+      slope: match.slope,
+      timeSource: 'metadata',
+      boundaryMatch: match.boundaryMatch,
+    };
+
+    progressText.textContent = '저장 중...';
+    const newMedia = await commitNewMedia({ basename, entry });
+    await commitYoutubeMapEntry(basename, youtubeId);
+
+    newMedia.youtubeId = youtubeId;
+    MEDIA.push(newMedia);
+    addMediaMarker(newMedia);
+    allBounds.push([newMedia.lat, newMedia.lon]);
+
+    urlInput.value = '';
+    btn.disabled = false;
+    btn.textContent = '② 파일 선택 (위치 추출용, 업로드 안함)';
+    progressWrap.classList.add('hidden');
+  } catch (e) {
+    fail(e.message);
+  }
+}
+
 function addTrackToMap(track) {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
   L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
