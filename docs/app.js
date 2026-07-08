@@ -344,6 +344,39 @@ function renderPanel(media, locked) {
       );
       btnRow.appendChild(uploadBtn);
       btnRow.appendChild(progressWrap);
+
+      const urlInput = document.createElement('input');
+      urlInput.type = 'url';
+      urlInput.placeholder = '이미 올린 유튜브 URL 붙여넣기';
+      urlInput.className = 'youtube-url-input';
+
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'copy-btn';
+      applyBtn.textContent = '유튜브 URL 적용';
+      applyBtn.addEventListener('click', async () => {
+        const youtubeId = extractYoutubeId(urlInput.value.trim());
+        if (!youtubeId) {
+          alert('올바른 유튜브 URL을 입력해주세요.\n예: https://youtu.be/abcdefghijk');
+          return;
+        }
+        applyBtn.disabled = true;
+        applyBtn.textContent = '저장 중...';
+        try {
+          const basename = getBasename(media);
+          await commitYoutubeMapEntry(basename, youtubeId);
+          media.youtubeId = youtubeId;
+          const marker = markerById[media.id];
+          if (marker) marker.setIcon(makeMarkerIcon(media));
+          renderPanel(media, true);
+        } catch (e) {
+          applyBtn.disabled = false;
+          applyBtn.textContent = '유튜브 URL 적용';
+          alert(`실패: ${e.message}`);
+        }
+      });
+
+      btnRow.appendChild(urlInput);
+      btnRow.appendChild(applyBtn);
     }
 
     panelInfoEl.appendChild(btnRow);
@@ -768,110 +801,9 @@ trackFileInput.addEventListener('change', () => {
   trackFileInput.value = '';
 });
 
-// Link an already-uploaded YouTube video to the map: user pastes the
-// share URL (https://youtu.be/...) and picks the video file for metadata.
-// No YouTube upload happens - the map marker and youtube_map.js entry are
-// written using the ID extracted from the URL, so the marker immediately
-// shows the ▶ badge and plays from YouTube.
 function extractYoutubeId(url) {
   const m = url.match(/(?:youtu\.be\/|[?&]v=)([\w-]{11})/);
   return m ? m[1] : null;
-}
-
-const ytUrlInput = document.createElement('input');
-ytUrlInput.type = 'url';
-ytUrlInput.placeholder = '유튜브 URL (https://youtu.be/...)';
-ytUrlInput.className = 'track-title-input';
-
-const ytUrlFileInput = document.createElement('input');
-ytUrlFileInput.type = 'file';
-ytUrlFileInput.accept = 'video/*';
-ytUrlFileInput.style.display = 'none';
-
-const ytUrlRow = document.createElement('div');
-ytUrlRow.className = 'row';
-const ytUrlBtn = document.createElement('button');
-ytUrlBtn.className = 'copy-btn';
-ytUrlBtn.textContent = '유튜브 URL 적용';
-ytUrlBtn.addEventListener('click', () => {
-  const youtubeId = extractYoutubeId(ytUrlInput.value.trim());
-  if (!youtubeId) {
-    alert('올바른 유튜브 URL을 먼저 입력해주세요.\n예: https://youtu.be/abcdefghijk');
-    ytUrlInput.focus();
-    return;
-  }
-  ytUrlFileInput.click();
-});
-
-ytUrlRow.appendChild(ytUrlInput);
-ytUrlRow.appendChild(ytUrlBtn);
-ytUrlRow.appendChild(ytUrlFileInput);
-legendBodyEl.appendChild(ytUrlRow);
-
-ytUrlFileInput.addEventListener('change', () => {
-  const file = ytUrlFileInput.files[0];
-  if (!file) return;
-  const youtubeId = extractYoutubeId(ytUrlInput.value.trim());
-  linkYoutubeToFile(file, youtubeId, ytUrlBtn, ytUrlInput);
-  ytUrlFileInput.value = '';
-});
-
-async function linkYoutubeToFile(file, youtubeId, btn, urlInput) {
-  btn.disabled = true;
-  btn.textContent = '추가 중...';
-
-  const fail = (msg) => {
-    btn.disabled = false;
-    btn.textContent = '유튜브 URL 적용';
-    alert(`실패: ${msg}`);
-  };
-
-  try {
-    const basename = file.name;
-    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
-      fail('이미 추가된 영상입니다.');
-      return;
-    }
-
-    const creationTimeUtc = await getMp4CreationTime(file);
-    if (!creationTimeUtc) {
-      fail('영상에서 촬영 시각 메타데이터를 찾지 못했습니다.');
-      return;
-    }
-    const duration = await getVideoDurationSeconds(file);
-    const localDt = new Date(creationTimeUtc.getTime() + FIT_TO_LOCAL_OFFSET_MS);
-    const match = matchMediaToTracks(TRACKS, localDt.getTime(), duration);
-
-    const entry = {
-      type: 'video',
-      path: `file:///F:/DCIM/DJI_001/${basename}`,
-      time: localDt.toISOString().replace('.000Z', '').replace('Z', ''),
-      duration,
-      lat: match.lat,
-      lon: match.lon,
-      color: match.color,
-      trackId: match.trackId,
-      estimated: match.estimated,
-      slope: match.slope,
-      timeSource: 'metadata',
-      boundaryMatch: match.boundaryMatch,
-    };
-
-    btn.textContent = '저장 중...';
-    const newMedia = await commitNewMedia({ basename, entry });
-    await commitYoutubeMapEntry(basename, youtubeId);
-
-    newMedia.youtubeId = youtubeId;
-    MEDIA.push(newMedia);
-    addMediaMarker(newMedia);
-    allBounds.push([newMedia.lat, newMedia.lon]);
-
-    urlInput.value = '';
-    btn.disabled = false;
-    btn.textContent = '유튜브 URL 적용';
-  } catch (e) {
-    fail(e.message);
-  }
 }
 
 function addTrackToMap(track) {
