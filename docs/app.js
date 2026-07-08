@@ -919,6 +919,91 @@ async function addMarkerWithExistingYoutubeId(file, youtubeId, btn, urlInput, pr
   }
 }
 
+// ── 파일 없이 날짜/시각 입력만으로 마커 추가 ─────────────────────────
+// 이미 유튜브에 올린 영상의 URL + 촬영 날짜·시각 → FIT 트랙 자동 매칭
+// 브라우저의 현지 시각(device timezone)을 UTC로 변환하고 FIT_TO_LOCAL_OFFSET_MS를
+// 더해서 기존 FIT 포인트들과 동일한 기준으로 비교합니다.
+const ytDateUrlInput = document.createElement('input');
+ytDateUrlInput.type = 'url';
+ytDateUrlInput.placeholder = '유튜브 URL';
+ytDateUrlInput.className = 'track-title-input';
+
+const ytDateTimeInput = document.createElement('input');
+ytDateTimeInput.type = 'datetime-local';
+ytDateTimeInput.className = 'track-title-input';
+ytDateTimeInput.style.flex = '0 0 auto';
+
+const ytDateRow = document.createElement('div');
+ytDateRow.className = 'row';
+const ytDateBtn = document.createElement('button');
+ytDateBtn.className = 'copy-btn';
+ytDateBtn.textContent = '마커 추가';
+ytDateBtn.addEventListener('click', async () => {
+  const youtubeId = extractYoutubeId(ytDateUrlInput.value.trim());
+  if (!youtubeId) {
+    alert('유튜브 URL을 입력해주세요.');
+    ytDateUrlInput.focus();
+    return;
+  }
+  if (!ytDateTimeInput.value) {
+    alert('촬영 날짜·시각을 입력해주세요.');
+    ytDateTimeInput.focus();
+    return;
+  }
+
+  ytDateBtn.disabled = true;
+  ytDateBtn.textContent = '추가 중...';
+
+  try {
+    const basename = `yt_${youtubeId}`;
+    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
+      throw new Error('이미 추가된 영상입니다.');
+    }
+
+    // datetime-local → UTC (device timezone) → +FIT_TO_LOCAL_OFFSET_MS
+    const dateMs = new Date(ytDateTimeInput.value).getTime() + FIT_TO_LOCAL_OFFSET_MS;
+    const match = matchMediaToTracks(TRACKS, dateMs, null);
+
+    const isoTime = new Date(dateMs).toISOString().replace('.000Z', '').replace('Z', '');
+    const entry = {
+      type: 'video',
+      path: `file:///youtube/${basename}`,
+      time: isoTime,
+      duration: null,
+      lat: match.lat,
+      lon: match.lon,
+      color: match.color,
+      trackId: match.trackId,
+      estimated: match.estimated,
+      slope: match.slope,
+      timeSource: 'manual',
+      boundaryMatch: match.boundaryMatch,
+    };
+
+    const newMedia = await commitNewMedia({ basename, entry });
+    await commitYoutubeMapEntry(basename, youtubeId);
+
+    newMedia.youtubeId = youtubeId;
+    MEDIA.push(newMedia);
+    addMediaMarker(newMedia);
+    allBounds.push([newMedia.lat, newMedia.lon]);
+
+    ytDateUrlInput.value = '';
+    ytDateTimeInput.value = '';
+    ytDateBtn.textContent = '마커 추가';
+    ytDateBtn.disabled = false;
+  } catch (e) {
+    ytDateBtn.textContent = '마커 추가';
+    ytDateBtn.disabled = false;
+    alert(`실패: ${e.message}`);
+  }
+});
+
+ytDateRow.appendChild(ytDateUrlInput);
+ytDateRow.appendChild(ytDateTimeInput);
+ytDateRow.appendChild(ytDateBtn);
+legendBodyEl.appendChild(ytDateRow);
+
 function addTrackToMap(track) {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
   L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
