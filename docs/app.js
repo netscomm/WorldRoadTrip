@@ -205,9 +205,65 @@ const allBounds = [];
 const trackLatLngs = {};
 const polylineById = {};
 
+// KST(한국)은 FIT 저장 시각(UTC+2 기준)에서 +7h가 실제 현지 시각.
+// 이탈리아/유럽은 저장 시각이 그대로 현지(CEST=UTC+2).
+const COUNTRY_LOCAL_OFFSET_EXTRA_MS = { KR: 7 * 60 * 60 * 1000 };
+
+function formatTrackTime(isoStr, country) {
+  const extra = COUNTRY_LOCAL_OFFSET_EXTRA_MS[country] || 0;
+  const d = new Date(new Date(isoStr).getTime() + extra);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function findNearestFitPoint(points, latlng, step) {
+  step = step || 1;
+  let best = points[0];
+  let bestDist = Infinity;
+  for (let i = 0; i < points.length; i += step) {
+    const p = points[i];
+    const d = (p.lat - latlng.lat) ** 2 + (p.lon - latlng.lng) ** 2;
+    if (d < bestDist) { bestDist = d; best = p; }
+  }
+  return { point: best, dist: bestDist };
+}
+
+function findNearestFitPointAllTracks(latlng) {
+  let best = null;
+  let bestDist = Infinity;
+  let bestTrack = null;
+  for (const track of TRACKS) {
+    const { point, dist } = findNearestFitPoint(track.points, latlng, 3);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = point;
+      bestTrack = track;
+    }
+  }
+  return best ? { ...best, color: bestTrack.color, trackId: bestTrack.id, country: bestTrack.country } : null;
+}
+
+function bindPolylineHover(pl, track) {
+  const tooltip = L.tooltip({ sticky: true, className: 'fit-time-tooltip' });
+  let lastMove = 0;
+  pl.on('mousemove', (e) => {
+    const now = Date.now();
+    if (now - lastMove < 80) return;
+    lastMove = now;
+    const { point } = findNearestFitPoint(track.points, e.latlng, 5);
+    const timeStr = formatTrackTime(point.t, track.country);
+    tooltip.setContent(timeStr);
+    if (!tooltip.isOpen()) pl.bindTooltip(tooltip).openTooltip(e.latlng);
+    else tooltip.setLatLng(e.latlng);
+  });
+  pl.on('mouseout', () => tooltip.close());
+}
+
 TRACKS.forEach((track) => {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
-  polylineById[track.id] = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  const pl = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  polylineById[track.id] = pl;
+  bindPolylineHover(pl, track);
   allBounds.push(...latlngs);
   trackLatLngs[track.id] = latlngs;
 });
@@ -854,31 +910,29 @@ function extractYoutubeId(url) {
   return m ? m[1] : null;
 }
 
-// ── 이미 유튜브에 있는 영상: URL 붙여넣기 → 팝업에서 날짜 입력 → 마커 추가 ──
-function showDatetimeModal() {
+// ── 이미 유튜브에 있는 영상: URL 붙여넣기 → 지도에서 위치 클릭 → 마커 추가 ──
+function enterPlaceMarkerMode() {
   return new Promise((resolve) => {
-    const modal = document.getElementById('dt-modal');
-    const input = document.getElementById('dt-modal-input');
-    const okBtn = document.getElementById('dt-modal-ok');
-    const cancelBtn = document.getElementById('dt-modal-cancel');
-    modal.classList.remove('hidden');
-    input.value = '';
-    setTimeout(() => input.focus(), 100);
-    const finish = (result) => {
-      modal.classList.add('hidden');
-      okBtn.replaceWith(okBtn.cloneNode(true));
-      cancelBtn.replaceWith(cancelBtn.cloneNode(true));
-      resolve(result);
+    const hint = document.getElementById('place-marker-hint');
+    hint.classList.remove('hidden');
+    map.getContainer().style.cursor = 'crosshair';
+
+    const onClick = (e) => {
+      cleanup();
+      const pt = findNearestFitPointAllTracks(e.latlng);
+      resolve(pt);
     };
-    document.getElementById('dt-modal-ok').addEventListener('click', () => {
-      if (!document.getElementById('dt-modal-input').value) return;
-      finish(new Date(document.getElementById('dt-modal-input').value));
-    });
-    document.getElementById('dt-modal-cancel').addEventListener('click', () => finish(null));
-    document.getElementById('dt-modal-input').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { if (e.target.value) finish(new Date(e.target.value)); }
-      else if (e.key === 'Escape') finish(null);
-    });
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') { cleanup(); resolve(null); }
+    };
+    const cleanup = () => {
+      map.off('click', onClick);
+      document.removeEventListener('keydown', onKeydown);
+      hint.classList.add('hidden');
+      map.getContainer().style.cursor = '';
+    };
+    map.on('click', onClick);
+    document.addEventListener('keydown', onKeydown);
   });
 }
 
@@ -891,7 +945,7 @@ const ytSimpleRow = document.createElement('div');
 ytSimpleRow.className = 'row';
 const ytSimpleBtn = document.createElement('button');
 ytSimpleBtn.className = 'copy-btn';
-ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+ytSimpleBtn.textContent = '지도에서 위치 선택';
 ytSimpleBtn.addEventListener('click', async () => {
   const youtubeId = extractYoutubeId(ytSimpleUrlInput.value.trim());
   if (!youtubeId) {
@@ -899,8 +953,13 @@ ytSimpleBtn.addEventListener('click', async () => {
     ytSimpleUrlInput.focus();
     return;
   }
-  const filmingDate = await showDatetimeModal();
-  if (!filmingDate) return;
+  if (TRACKS.length === 0) {
+    alert('FIT 경로가 없어서 위치를 지정할 수 없습니다.\n먼저 FIT 파일을 추가해주세요.');
+    return;
+  }
+
+  const pt = await enterPlaceMarkerMode();
+  if (!pt) return;
 
   ytSimpleBtn.disabled = true;
   ytSimpleBtn.textContent = '추가 중...';
@@ -909,17 +968,14 @@ ytSimpleBtn.addEventListener('click', async () => {
     if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
       throw new Error('이미 추가된 영상입니다.');
     }
-    const dateMs = filmingDate.getTime() + FIT_TO_LOCAL_OFFSET_MS;
-    const match = matchMediaToTracks(TRACKS, dateMs, null);
-    const isoTime = new Date(dateMs).toISOString().replace('.000Z', '').replace('Z', '');
     const entry = {
       type: 'video',
       path: 'file:///youtube/' + basename,
-      time: isoTime,
+      time: pt.t,
       duration: null,
-      lat: match.lat, lon: match.lon, color: match.color,
-      trackId: match.trackId, estimated: match.estimated,
-      slope: match.slope, timeSource: 'manual', boundaryMatch: match.boundaryMatch,
+      lat: pt.lat, lon: pt.lon, color: pt.color,
+      trackId: pt.trackId, estimated: false,
+      slope: 'unknown', timeSource: 'manual', boundaryMatch: false,
     };
     const newMedia = await commitNewMedia({ basename, entry });
     await commitYoutubeMapEntry(basename, youtubeId);
@@ -928,10 +984,10 @@ ytSimpleBtn.addEventListener('click', async () => {
     addMediaMarker(newMedia);
     allBounds.push([newMedia.lat, newMedia.lon]);
     ytSimpleUrlInput.value = '';
-    ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+    ytSimpleBtn.textContent = '지도에서 위치 선택';
     ytSimpleBtn.disabled = false;
   } catch (e) {
-    ytSimpleBtn.textContent = '마커 추가 (파일 없이)';
+    ytSimpleBtn.textContent = '지도에서 위치 선택';
     ytSimpleBtn.disabled = false;
     alert('실패: ' + e.message);
   }
@@ -942,7 +998,9 @@ legendBodyEl.appendChild(ytSimpleRow);
 
 function addTrackToMap(track) {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
-  polylineById[track.id] = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  const pl = L.polyline(latlngs, { color: track.color, weight: 3, opacity: 0.8 }).addTo(map);
+  polylineById[track.id] = pl;
+  bindPolylineHover(pl, track);
   trackLatLngs[track.id] = latlngs;
   TRACKS.push(track);
 

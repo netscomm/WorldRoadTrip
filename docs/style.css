@@ -444,50 +444,34 @@ html, body {
   }
 }
 
-/* ── 날짜 입력 팝업 모달 ── */
-#dt-modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.55);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#dt-modal.hidden { display: none; }
-#dt-modal-box {
-  background: #222;
-  color: #eee;
-  border-radius: 12px;
-  padding: 20px;
-  min-width: 280px;
-  max-width: 90vw;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-#dt-modal-title { font-weight: bold; font-size: 14px; }
-#dt-modal-hint { font-size: 11px; color: #aaa; }
-#dt-modal-input {
-  background: #333;
-  color: #eee;
-  border: 1px solid #555;
-  border-radius: 6px;
-  padding: 8px;
-  font-size: 14px;
-  width: 100%;
-  box-sizing: border-box;
-}
-#dt-modal-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
-#dt-modal-btns button {
-  padding: 7px 18px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
+/* ── 지도 클릭 모드 힌트 배너 ── */
+#place-marker-hint {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.78);
+  color: #fff;
+  padding: 9px 20px;
+  border-radius: 20px;
   font-size: 13px;
+  z-index: 1500;
+  pointer-events: none;
+  white-space: nowrap;
 }
-#dt-modal-cancel { background: #444; color: #eee; }
-#dt-modal-ok { background: #d33; color: #fff; }
+#place-marker-hint.hidden { display: none; }
+
+/* ── FIT 트랙 마우스 오버 시각 툴팁 ── */
+.fit-time-tooltip {
+  background: rgba(0,0,0,0.78);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  padding: 4px 8px;
+  box-shadow: none;
+}
+.fit-time-tooltip::before { display: none; }
 
 /* FIT 트랙 삭제 버튼 */
 .track-del-btn {
