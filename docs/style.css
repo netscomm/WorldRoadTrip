@@ -491,6 +491,12 @@ html, body {
   font-size: 13px;
   cursor: pointer;
 }
+#url-overlay-error {
+  color: #f88;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#url-overlay-error.hidden { display: none; }
 
 /* ── FIT 트랙 마우스 오버 시각 툴팁 ── */
 .fit-time-tooltip {

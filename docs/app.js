@@ -911,78 +911,96 @@ function extractYoutubeId(url) {
 }
 
 // ── 지도 빈 곳 클릭 → URL 입력 오버레이 → 마커 추가 ─────────────────
-// 마커나 패널이 아닌 곳을 클릭하면 URL 입력창이 나타남.
-// 트랙 위를 호버하면 시각이 보이므로 원하는 위치에서 바로 클릭하면 됨.
+// 지도 빈 곳 클릭 → 상단 URL 입력 오버레이 → YouTube 마커 추가.
+// 오버레이는 커밋이 완료될 때까지 닫히지 않아서 진행 상태가 항상 보임.
 let pendingMapClickPoint = null;
+let urlOverlayBusy = false;
+
+const urlOverlayEl   = document.getElementById('url-input-overlay');
+const urlOverlayInput = document.getElementById('url-overlay-input');
+const urlOverlayOk   = document.getElementById('url-overlay-ok');
+const urlOverlayCancel = document.getElementById('url-overlay-cancel');
 
 map.on('click', (e) => {
   if (TRACKS.length === 0) return;
+  if (!urlOverlayEl.classList.contains('hidden')) return; // already open
   const pt = findNearestFitPointAllTracks(e.latlng);
   if (!pt) return;
   pendingMapClickPoint = pt;
-
-  const overlay = document.getElementById('url-input-overlay');
-  const input = document.getElementById('url-overlay-input');
-  overlay.classList.remove('hidden');
-  setTimeout(() => input.focus(), 50);
+  urlOverlayEl.classList.remove('hidden');
+  setTimeout(() => urlOverlayInput.focus(), 50);
 });
 
-async function commitYoutubeMarkerAtPoint(pt, youtubeId) {
-  const basename = 'yt_' + youtubeId;
-  if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
-    throw new Error('이미 추가된 영상입니다.');
-  }
-  const entry = {
-    type: 'video',
-    path: 'file:///youtube/' + basename,
-    time: pt.t,
-    duration: null,
-    lat: pt.lat, lon: pt.lon, color: pt.color,
-    trackId: pt.trackId, estimated: false,
-    slope: 'unknown', timeSource: 'manual', boundaryMatch: false,
-  };
-  const newMedia = await commitNewMedia({ basename, entry });
-  await commitYoutubeMapEntry(basename, youtubeId);
-  newMedia.youtubeId = youtubeId;
-  MEDIA.push(newMedia);
-  addMediaMarker(newMedia);
-  allBounds.push([newMedia.lat, newMedia.lon]);
-}
-
-function dismissUrlOverlay() {
-  document.getElementById('url-input-overlay').classList.add('hidden');
-  document.getElementById('url-overlay-input').value = '';
+function closeUrlOverlay() {
+  urlOverlayEl.classList.add('hidden');
+  urlOverlayInput.value = '';
+  urlOverlayOk.textContent = '추가';
+  urlOverlayOk.disabled = false;
+  urlOverlayCancel.disabled = false;
   pendingMapClickPoint = null;
+  urlOverlayBusy = false;
 }
 
-document.getElementById('url-overlay-cancel').addEventListener('click', dismissUrlOverlay);
+urlOverlayCancel.addEventListener('click', () => {
+  if (!urlOverlayBusy) closeUrlOverlay();
+});
 
-document.getElementById('url-overlay-ok').addEventListener('click', async () => {
-  const input = document.getElementById('url-overlay-input');
-  const youtubeId = extractYoutubeId(input.value.trim());
+urlOverlayOk.addEventListener('click', async () => {
+  if (urlOverlayBusy) return;
+  const youtubeId = extractYoutubeId(urlOverlayInput.value.trim());
   if (!youtubeId) {
-    input.focus();
-    input.style.outline = '2px solid #f44';
-    setTimeout(() => { input.style.outline = ''; }, 1200);
+    urlOverlayInput.focus();
+    urlOverlayInput.style.outline = '2px solid #f66';
+    setTimeout(() => { urlOverlayInput.style.outline = ''; }, 1500);
     return;
   }
-  const pt = pendingMapClickPoint;
-  dismissUrlOverlay();
 
-  const okBtn = document.getElementById('url-overlay-ok');
-  okBtn.disabled = true;
+  const pt = pendingMapClickPoint;
+  if (!pt) { closeUrlOverlay(); return; }
+
+  urlOverlayBusy = true;
+  urlOverlayOk.textContent = '저장 중...';
+  urlOverlayOk.disabled = true;
+  urlOverlayCancel.disabled = true;
+
   try {
-    await commitYoutubeMarkerAtPoint(pt, youtubeId);
+    const basename = 'yt_' + youtubeId;
+    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
+      throw new Error('이미 추가된 영상입니다.');
+    }
+    const entry = {
+      type: 'video',
+      path: 'file:///youtube/' + basename,
+      time: pt.t,
+      duration: null,
+      lat: pt.lat, lon: pt.lon, color: pt.color,
+      trackId: pt.trackId, estimated: false,
+      slope: 'unknown', timeSource: 'manual', boundaryMatch: false,
+    };
+    const newMedia = await commitNewMedia({ basename, entry });
+    await commitYoutubeMapEntry(basename, youtubeId);
+    newMedia.youtubeId = youtubeId;
+    MEDIA.push(newMedia);
+    addMediaMarker(newMedia);
+    allBounds.push([newMedia.lat, newMedia.lon]);
+
+    urlOverlayOk.textContent = '✓ 추가됨';
+    setTimeout(closeUrlOverlay, 1000);
   } catch (e) {
-    alert('실패: ' + e.message);
-  } finally {
-    okBtn.disabled = false;
+    urlOverlayOk.textContent = '추가';
+    urlOverlayOk.disabled = false;
+    urlOverlayCancel.disabled = false;
+    urlOverlayBusy = false;
+    const errEl = document.getElementById('url-overlay-error');
+    errEl.textContent = '오류: ' + e.message;
+    errEl.classList.remove('hidden');
+    setTimeout(() => errEl.classList.add('hidden'), 5000);
   }
 });
 
-document.getElementById('url-overlay-input').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('url-overlay-ok').click();
-  else if (e.key === 'Escape') dismissUrlOverlay();
+urlOverlayInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') urlOverlayOk.click();
+  else if (e.key === 'Escape' && !urlOverlayBusy) closeUrlOverlay();
 });
 
 function addTrackToMap(track) {
