@@ -444,22 +444,53 @@ html, body {
   }
 }
 
-/* ── 지도 클릭 모드 힌트 배너 ── */
-#place-marker-hint {
+/* ── 지도 클릭 시 유튜브 URL 입력 오버레이 ── */
+#url-input-overlay {
   position: absolute;
   top: 14px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(0,0,0,0.78);
-  color: #fff;
-  padding: 9px 20px;
-  border-radius: 20px;
-  font-size: 13px;
+  background: rgba(20,20,20,0.92);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   z-index: 1500;
-  pointer-events: none;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  min-width: 320px;
+  max-width: 90vw;
+}
+#url-input-overlay.hidden { display: none; }
+#url-overlay-input {
+  flex: 1;
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  min-width: 0;
+}
+#url-overlay-ok {
+  background: #d33;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
   white-space: nowrap;
 }
-#place-marker-hint.hidden { display: none; }
+#url-overlay-cancel {
+  background: #444;
+  color: #eee;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
 
 /* ── FIT 트랙 마우스 오버 시각 툴팁 ── */
 .fit-time-tooltip {

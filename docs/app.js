@@ -910,91 +910,80 @@ function extractYoutubeId(url) {
   return m ? m[1] : null;
 }
 
-// ── 이미 유튜브에 있는 영상: URL 붙여넣기 → 지도에서 위치 클릭 → 마커 추가 ──
-function enterPlaceMarkerMode() {
-  return new Promise((resolve) => {
-    const hint = document.getElementById('place-marker-hint');
-    hint.classList.remove('hidden');
-    map.getContainer().style.cursor = 'crosshair';
+// ── 지도 빈 곳 클릭 → URL 입력 오버레이 → 마커 추가 ─────────────────
+// 마커나 패널이 아닌 곳을 클릭하면 URL 입력창이 나타남.
+// 트랙 위를 호버하면 시각이 보이므로 원하는 위치에서 바로 클릭하면 됨.
+let pendingMapClickPoint = null;
 
-    const onClick = (e) => {
-      cleanup();
-      const pt = findNearestFitPointAllTracks(e.latlng);
-      resolve(pt);
-    };
-    const onKeydown = (e) => {
-      if (e.key === 'Escape') { cleanup(); resolve(null); }
-    };
-    const cleanup = () => {
-      map.off('click', onClick);
-      document.removeEventListener('keydown', onKeydown);
-      hint.classList.add('hidden');
-      map.getContainer().style.cursor = '';
-    };
-    map.on('click', onClick);
-    document.addEventListener('keydown', onKeydown);
-  });
+map.on('click', (e) => {
+  if (TRACKS.length === 0) return;
+  const pt = findNearestFitPointAllTracks(e.latlng);
+  if (!pt) return;
+  pendingMapClickPoint = pt;
+
+  const overlay = document.getElementById('url-input-overlay');
+  const input = document.getElementById('url-overlay-input');
+  overlay.classList.remove('hidden');
+  setTimeout(() => input.focus(), 50);
+});
+
+async function commitYoutubeMarkerAtPoint(pt, youtubeId) {
+  const basename = 'yt_' + youtubeId;
+  if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
+    throw new Error('이미 추가된 영상입니다.');
+  }
+  const entry = {
+    type: 'video',
+    path: 'file:///youtube/' + basename,
+    time: pt.t,
+    duration: null,
+    lat: pt.lat, lon: pt.lon, color: pt.color,
+    trackId: pt.trackId, estimated: false,
+    slope: 'unknown', timeSource: 'manual', boundaryMatch: false,
+  };
+  const newMedia = await commitNewMedia({ basename, entry });
+  await commitYoutubeMapEntry(basename, youtubeId);
+  newMedia.youtubeId = youtubeId;
+  MEDIA.push(newMedia);
+  addMediaMarker(newMedia);
+  allBounds.push([newMedia.lat, newMedia.lon]);
 }
 
-const ytSimpleUrlInput = document.createElement('input');
-ytSimpleUrlInput.type = 'url';
-ytSimpleUrlInput.placeholder = '유튜브 URL 붙여넣기 (이미 올린 영상)';
-ytSimpleUrlInput.className = 'track-title-input';
+function dismissUrlOverlay() {
+  document.getElementById('url-input-overlay').classList.add('hidden');
+  document.getElementById('url-overlay-input').value = '';
+  pendingMapClickPoint = null;
+}
 
-const ytSimpleRow = document.createElement('div');
-ytSimpleRow.className = 'row';
-const ytSimpleBtn = document.createElement('button');
-ytSimpleBtn.className = 'copy-btn';
-ytSimpleBtn.textContent = '지도에서 위치 선택';
-ytSimpleBtn.addEventListener('click', async () => {
-  const youtubeId = extractYoutubeId(ytSimpleUrlInput.value.trim());
+document.getElementById('url-overlay-cancel').addEventListener('click', dismissUrlOverlay);
+
+document.getElementById('url-overlay-ok').addEventListener('click', async () => {
+  const input = document.getElementById('url-overlay-input');
+  const youtubeId = extractYoutubeId(input.value.trim());
   if (!youtubeId) {
-    alert('올바른 유튜브 URL을 입력해주세요.\n예: https://youtu.be/abcdefghijk');
-    ytSimpleUrlInput.focus();
+    input.focus();
+    input.style.outline = '2px solid #f44';
+    setTimeout(() => { input.style.outline = ''; }, 1200);
     return;
   }
-  if (TRACKS.length === 0) {
-    alert('FIT 경로가 없어서 위치를 지정할 수 없습니다.\n먼저 FIT 파일을 추가해주세요.');
-    return;
-  }
+  const pt = pendingMapClickPoint;
+  dismissUrlOverlay();
 
-  const pt = await enterPlaceMarkerMode();
-  if (!pt) return;
-
-  ytSimpleBtn.disabled = true;
-  ytSimpleBtn.textContent = '추가 중...';
+  const okBtn = document.getElementById('url-overlay-ok');
+  okBtn.disabled = true;
   try {
-    const basename = 'yt_' + youtubeId;
-    if (MEDIA.some((m) => m.path.endsWith('/' + basename))) {
-      throw new Error('이미 추가된 영상입니다.');
-    }
-    const entry = {
-      type: 'video',
-      path: 'file:///youtube/' + basename,
-      time: pt.t,
-      duration: null,
-      lat: pt.lat, lon: pt.lon, color: pt.color,
-      trackId: pt.trackId, estimated: false,
-      slope: 'unknown', timeSource: 'manual', boundaryMatch: false,
-    };
-    const newMedia = await commitNewMedia({ basename, entry });
-    await commitYoutubeMapEntry(basename, youtubeId);
-    newMedia.youtubeId = youtubeId;
-    MEDIA.push(newMedia);
-    addMediaMarker(newMedia);
-    allBounds.push([newMedia.lat, newMedia.lon]);
-    ytSimpleUrlInput.value = '';
-    ytSimpleBtn.textContent = '지도에서 위치 선택';
-    ytSimpleBtn.disabled = false;
+    await commitYoutubeMarkerAtPoint(pt, youtubeId);
   } catch (e) {
-    ytSimpleBtn.textContent = '지도에서 위치 선택';
-    ytSimpleBtn.disabled = false;
     alert('실패: ' + e.message);
+  } finally {
+    okBtn.disabled = false;
   }
 });
-ytSimpleRow.appendChild(ytSimpleUrlInput);
-ytSimpleRow.appendChild(ytSimpleBtn);
-legendBodyEl.appendChild(ytSimpleRow);
+
+document.getElementById('url-overlay-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('url-overlay-ok').click();
+  else if (e.key === 'Escape') dismissUrlOverlay();
+});
 
 function addTrackToMap(track) {
   const latlngs = track.points.map((p) => [p.lat, p.lon]);
