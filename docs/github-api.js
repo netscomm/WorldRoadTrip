@@ -48,9 +48,10 @@ function base64ToUtf8(b64) {
 }
 
 async function githubGetFile(path) {
+  const pat = await getPAT();
   const res = await fetch(
     `https://api.github.com/repos/${GITHUB_REPO}/contents/${path}?ref=${GITHUB_BRANCH}`,
-    { headers: { Authorization: `token ${getPAT()}`, Accept: "application/vnd.github+json" } }
+    { headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github+json" } }
   );
   if (!res.ok) {
     throw new Error(`GitHub API 오류 (${res.status}): ${path} 조회 실패`);
@@ -71,10 +72,11 @@ async function githubGetFile(path) {
 }
 
 async function githubPutFile(path, newContent, sha, message) {
+  const pat = await getPAT();
   const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`, {
     method: "PUT",
     headers: {
-      Authorization: `token ${getPAT()}`,
+      Authorization: `token ${pat}`,
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
     },
