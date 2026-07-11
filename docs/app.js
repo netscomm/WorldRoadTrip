@@ -198,40 +198,39 @@ async function deleteMedia(media) {
   const label = getBasename(media);
   if (!confirm(`"${label}" 마커를 삭제하시겠습니까?\n지도에서 마커가 사라집니다.`)) return;
 
-  try {
-    // Remove from data.js
-    const { content: dataContent, sha: dataSha } = await githubGetFile(DATA_JS_PATH);
-    const { tracks, media: mediaList } = parseDataJs(dataContent);
-    const newMedia = mediaList.filter((m) => m.id !== media.id);
-    await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, newMedia), dataSha, `Remove media marker ${label}`);
-
-    // youtube_map.js cleanup: only for manually-placed yt_* markers
-    const basename = getBasename(media);
-    if (basename.startsWith('yt_')) {
-      try {
-        const { content: ytContent, sha: ytSha } = await githubGetFile(YOUTUBE_MAP_PATH);
-        const m = ytContent.match(/const YOUTUBE_MAP = (\{.*\});/s);
-        const ytMap = JSON.parse(m[1]);
-        delete ytMap[basename];
-        const newYtContent = `const YOUTUBE_MAP = ${JSON.stringify(ytMap, null, 2)};\n`;
-        await githubPutFile(YOUTUBE_MAP_PATH, newYtContent, ytSha, `Remove YouTube entry for ${basename}`);
-      } catch (_) { /* youtube_map.js 정리 실패해도 마커 삭제는 완료로 처리 */ }
-    }
-
-    // Remove from in-memory state and map
-    const idx = MEDIA.findIndex((m) => m.id === media.id);
-    if (idx !== -1) MEDIA.splice(idx, 1);
-    if (markerById[media.id]) {
-      markerById[media.id].remove();
-      delete markerById[media.id];
-    }
-    lockedMedia = null;
-    panelEl.classList.add('hidden');
-    panelMediaEl.innerHTML = '';
-    panelInfoEl.innerHTML = '';
-  } catch (e) {
-    alert(`삭제 실패: ${e.message}`);
+  // Remove from data.js
+  const { content: dataContent, sha: dataSha } = await githubGetFile(DATA_JS_PATH);
+  const { tracks, media: mediaList } = parseDataJs(dataContent);
+  const newMediaList = mediaList.filter((m) => m.id !== media.id);
+  if (newMediaList.length === mediaList.length) {
+    throw new Error(`data.js에서 id "${media.id}" 항목을 찾지 못했습니다.`);
   }
+  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, newMediaList), dataSha, `Remove media marker ${label}`);
+
+  // youtube_map.js cleanup: only for manually-placed yt_* markers
+  const basename = getBasename(media);
+  if (basename.startsWith('yt_')) {
+    try {
+      const { content: ytContent, sha: ytSha } = await githubGetFile(YOUTUBE_MAP_PATH);
+      const m = ytContent.match(/const YOUTUBE_MAP = (\{.*\});/s);
+      const ytMap = JSON.parse(m[1]);
+      delete ytMap[basename];
+      const newYtContent = `const YOUTUBE_MAP = ${JSON.stringify(ytMap, null, 2)};\n`;
+      await githubPutFile(YOUTUBE_MAP_PATH, newYtContent, ytSha, `Remove YouTube entry for ${basename}`);
+    } catch (_) { /* youtube_map.js 정리 실패해도 마커 삭제는 완료 */ }
+  }
+
+  // Remove from in-memory state and map
+  const idx = MEDIA.findIndex((m) => m.id === media.id);
+  if (idx !== -1) MEDIA.splice(idx, 1);
+  if (markerById[media.id]) {
+    markerById[media.id].remove();
+    delete markerById[media.id];
+  }
+  lockedMedia = null;
+  panelEl.classList.add('hidden');
+  panelMediaEl.innerHTML = '';
+  panelInfoEl.innerHTML = '';
 }
 
 const map = L.map('map');
@@ -495,7 +494,18 @@ function renderPanel(media, locked) {
   const delBtn = document.createElement('button');
   delBtn.className = 'copy-btn copy-all-btn marker-del-btn';
   delBtn.textContent = '마커 삭제';
-  delBtn.addEventListener('click', () => deleteMedia(media));
+  delBtn.addEventListener('click', async () => {
+    if (delBtn.disabled) return;
+    delBtn.disabled = true;
+    delBtn.textContent = '삭제 중...';
+    try {
+      await deleteMedia(media);
+    } catch (e) {
+      delBtn.disabled = false;
+      delBtn.textContent = '마커 삭제';
+      alert(`삭제 실패: ${e.message}`);
+    }
+  });
   panelInfoEl.appendChild(delBtn);
 }
 
