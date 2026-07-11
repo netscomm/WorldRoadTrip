@@ -640,3 +640,13 @@ html, body {
   margin-left: auto;
 }
 .track-del-btn:hover { color: #f33; }
+
+.marker-del-btn {
+  background: #5a1a1a !important;
+  border-color: #a33 !important;
+  color: #f88 !important;
+  margin-top: 4px;
+}
+.marker-del-btn:hover {
+  background: #7a2020 !important;
+}
