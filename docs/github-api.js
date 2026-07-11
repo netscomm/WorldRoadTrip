@@ -8,13 +8,33 @@ const GITHUB_REPO = "netscomm/WorldRoadTrip";
 const GITHUB_BRANCH = "main";
 
 let cachedPAT = null;
+let _patResolve = null;
+let _patReject = null;
 
-function getPAT() {
+// Called by the OK/Cancel buttons wired up in app.js initPatModal()
+function _patModalSubmit(val) {
+  if (_patResolve) { _patResolve(val); _patResolve = _patReject = null; }
+}
+function _patModalAbort() {
+  if (_patReject) { _patReject(new Error("GitHub 토큰 입력이 취소됐습니다.")); _patResolve = _patReject = null; }
+}
+
+function _showPatModal() {
+  return new Promise((resolve, reject) => {
+    _patResolve = resolve;
+    _patReject = reject;
+    const modal = document.getElementById("pat-modal");
+    const input = document.getElementById("pat-modal-input");
+    modal.classList.remove("hidden");
+    input.value = "";
+    input.focus();
+  });
+}
+
+async function getPAT() {
   if (cachedPAT) return cachedPAT;
-  const token = window.prompt(
-    "GitHub Personal Access Token을 입력하세요 (이 저장소의 Contents 쓰기 권한 필요, 이 페이지를 새로고침하면 다시 입력해야 합니다):"
-  );
-  if (!token) throw new Error("GitHub 토큰이 필요합니다.");
+  const token = await _showPatModal();
+  if (!token || !token.trim()) throw new Error("GitHub 토큰이 필요합니다.");
   cachedPAT = token.trim();
   return cachedPAT;
 }

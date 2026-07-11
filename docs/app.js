@@ -912,6 +912,28 @@ function extractYoutubeId(url) {
 
 // ── 지도 빈 곳 클릭 → URL 입력 오버레이 → 마커 추가 ─────────────────
 // 지도 빈 곳 클릭 → 상단 URL 입력 오버레이 → YouTube 마커 추가.
+// ── GitHub PAT 모달 버튼 연결 ──
+(function initPatModal() {
+  const modal  = document.getElementById('pat-modal');
+  const input  = document.getElementById('pat-modal-input');
+  const okBtn  = document.getElementById('pat-modal-ok');
+  const cancel = document.getElementById('pat-modal-cancel');
+
+  function submit() {
+    const val = input.value.trim();
+    if (!val) { input.focus(); return; }
+    modal.classList.add('hidden');
+    _patModalSubmit(val);
+  }
+
+  okBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  cancel.addEventListener('click', () => {
+    modal.classList.add('hidden');
+    _patModalAbort();
+  });
+})();
+
 // 오버레이는 커밋이 완료될 때까지 닫히지 않아서 진행 상태가 항상 보임.
 let pendingMapClickPoint = null;
 let urlOverlayBusy = false;

@@ -444,6 +444,88 @@ html, body {
   }
 }
 
+/* ── GitHub PAT 입력 모달 ── */
+#pat-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#pat-modal.hidden { display: none; }
+#pat-modal-box {
+  background: #1a1a1a;
+  color: #eee;
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: min(480px, 92vw);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+}
+#pat-modal-title {
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 12px;
+}
+#pat-modal-desc {
+  font-size: 12px;
+  color: #bbb;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+#pat-modal-desc a {
+  color: #7aacf8;
+  word-break: break-all;
+}
+#pat-modal-desc ol {
+  margin: 6px 0 6px 18px;
+  padding: 0;
+}
+#pat-modal-desc li { margin: 3px 0; }
+#pat-modal-desc code {
+  background: #333;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+#pat-modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #333;
+  color: #eee;
+  border: 1px solid #555;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: monospace;
+  margin-bottom: 12px;
+}
+#pat-modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+#pat-modal-cancel {
+  background: #444;
+  color: #eee;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+#pat-modal-ok {
+  background: #2a7a3a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+#pat-modal-ok:hover { background: #358a46; }
+
 /* ── 지도 클릭 시 유튜브 URL 입력 오버레이 ── */
 #url-input-overlay {
   position: absolute;

@@ -25,6 +25,29 @@
   <div id="unknown-list-body"></div>
 </div>
 
+<!-- GitHub PAT 입력 모달 -->
+<div id="pat-modal" class="hidden">
+  <div id="pat-modal-box">
+    <div id="pat-modal-title">GitHub 토큰 입력</div>
+    <div id="pat-modal-desc">
+      마커 추가/삭제는 GitHub에 직접 저장됩니다. 아래 토큰이 필요합니다.<br>
+      <strong>발급 방법:</strong>
+      <ol>
+        <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token</a></li>
+        <li>Repository access: <code>netscomm/WorldRoadTrip</code> 만 선택</li>
+        <li>Permissions → Repository permissions → <strong>Contents: Read and write</strong></li>
+        <li>Generate token → 복사 후 아래에 붙여넣기</li>
+      </ol>
+      <small>토큰은 이 페이지 안에서만 사용되고, 새로고침하면 사라집니다.</small>
+    </div>
+    <input type="password" id="pat-modal-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+    <div id="pat-modal-buttons">
+      <button id="pat-modal-cancel">취소</button>
+      <button id="pat-modal-ok">확인</button>
+    </div>
+  </div>
+</div>
+
 <div id="url-input-overlay" class="hidden">
   <input type="url" id="url-overlay-input" placeholder="유튜브 URL 붙여넣기 (https://youtu.be/...)">
   <button id="url-overlay-ok">추가</button>
