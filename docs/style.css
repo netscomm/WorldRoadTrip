@@ -664,6 +664,22 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+.track-rename-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+  flex: none;
+  line-height: 1;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.row:hover .track-rename-btn { opacity: 1; }
+.track-rename-btn:hover { color: #333; }
+
 .track-del-btn {
   background: none;
   border: none;
@@ -673,7 +689,6 @@ html, body {
   padding: 0 2px;
   flex: none;
   line-height: 1;
-  margin-left: auto;
 }
 .track-del-btn:hover { color: #f33; }
 

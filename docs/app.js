@@ -818,10 +818,14 @@ function renderTrackRows(country) {
     nameSpan.addEventListener('click', () => map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] }));
     nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
     nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
-    nameSpan.addEventListener('dblclick', (e) => {
-      if (fitBusy) return;
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'track-rename-btn';
+    renameBtn.textContent = '✎';
+    renameBtn.title = '이름 변경';
+    renameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      startTrackRename(track, nameSpan);
+      if (!fitBusy) startTrackRename(track, nameSpan);
     });
 
     const delBtn = document.createElement('button');
@@ -831,6 +835,7 @@ function renderTrackRows(country) {
     delBtn.addEventListener('click', () => { if (!fitBusy) deleteTrack(track); });
 
     row.appendChild(nameSpan);
+    row.appendChild(renameBtn);
     row.appendChild(delBtn);
     legendTracksEl.appendChild(row);
   });
