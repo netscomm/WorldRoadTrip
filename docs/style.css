@@ -179,6 +179,41 @@ html, body {
 #legend-tracks {
   max-height: 18vh;
   overflow-y: auto;
+  position: relative;
+  min-height: 28px;
+  border-radius: 4px;
+  border: 1.5px dashed transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+#legend-tracks.fit-drop-active {
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.08);
+}
+
+#legend-tracks.fit-drop-active::after {
+  content: '.fit 파일 놓기';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4a9eff;
+  font-weight: bold;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.fit-drop-hint {
+  color: #bbb;
+  font-size: 11px;
+  text-align: center;
+  padding: 5px 0;
+  border: 1.5px dashed #ccc;
+  border-radius: 4px;
 }
 
 #legend-country-tabs {

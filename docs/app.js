@@ -672,6 +672,32 @@ const legendTracksEl = document.createElement('div');
 legendTracksEl.id = 'legend-tracks';
 legendBodyEl.appendChild(legendTracksEl);
 
+// ── FIT drag-and-drop onto track list ──────────────────────────────────
+let _fitDragCount = 0;
+legendTracksEl.addEventListener('dragenter', (e) => {
+  if (!e.dataTransfer.types.includes('Files')) return;
+  e.preventDefault();
+  if (++_fitDragCount === 1) legendTracksEl.classList.add('fit-drop-active');
+});
+legendTracksEl.addEventListener('dragover', (e) => {
+  if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+legendTracksEl.addEventListener('dragleave', () => {
+  if (--_fitDragCount <= 0) {
+    _fitDragCount = 0;
+    legendTracksEl.classList.remove('fit-drop-active');
+  }
+});
+legendTracksEl.addEventListener('drop', (e) => {
+  e.preventDefault();
+  _fitDragCount = 0;
+  legendTracksEl.classList.remove('fit-drop-active');
+  const file = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.fit'));
+  if (!file) { alert('.fit 파일만 추가할 수 있습니다.'); return; }
+  const title = file.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]/g, '_');
+  uploadTrackFile(file, title, trackUploadBtn, trackUploadProgressWrap);
+});
+
 const countries = [];
 TRACKS.forEach((track) => {
   if (!countries.some((c) => c.code === track.country)) {
@@ -683,7 +709,15 @@ let activeCountry = countries.length ? countries[0].code : null;
 
 function renderTrackRows(country) {
   legendTracksEl.innerHTML = '';
-  TRACKS.filter((track) => track.country === country).forEach((track) => {
+  const countryTracks = TRACKS.filter((track) => track.country === country);
+  if (!countryTracks.length) {
+    const hint = document.createElement('div');
+    hint.className = 'fit-drop-hint';
+    hint.textContent = 'FIT 파일을 여기에 드래그';
+    legendTracksEl.appendChild(hint);
+    return;
+  }
+  countryTracks.forEach((track) => {
     const row = document.createElement('div');
     row.className = 'row';
     row.style.display = 'flex';
