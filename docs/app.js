@@ -162,61 +162,66 @@ function buildDataJs(tracks, media) {
 }
 
 async function commitNewMedia(newMediaWithoutId) {
-  const { content, sha } = await githubGetFile(DATA_JS_PATH);
-  const { tracks, media } = parseDataJs(content);
-  if (media.some((m) => m.path.endsWith('/' + newMediaWithoutId.basename))) {
-    throw new Error('이미 추가된 영상입니다.');
-  }
-  const entry = { id: nextMediaId(media), ...newMediaWithoutId.entry };
-  media.push(entry);
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add media entry for ${newMediaWithoutId.basename}`);
-  return entry;
+  let savedEntry;
+  await githubUpdateFile(DATA_JS_PATH, (content) => {
+    const { tracks, media } = parseDataJs(content);
+    if (media.some((m) => m.path.endsWith('/' + newMediaWithoutId.basename))) {
+      throw new Error('이미 추가된 영상입니다.');
+    }
+    savedEntry = { id: nextMediaId(media), ...newMediaWithoutId.entry };
+    media.push(savedEntry);
+    return buildDataJs(tracks, media);
+  }, `Add media entry for ${newMediaWithoutId.basename}`);
+  return savedEntry;
 }
 
 async function commitNewTrack(fname, trackWithoutId) {
-  const { content, sha } = await githubGetFile(DATA_JS_PATH);
-  const { tracks, media } = parseDataJs(content);
-  if (tracks.some((t) => t.file === fname)) {
-    throw new Error(`이미 같은 이름(${fname})의 경로가 있습니다.`);
-  }
-  const entry = { id: nextTrackId(tracks), ...trackWithoutId };
-  tracks.push(entry);
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Add FIT track ${fname}`);
-  return entry;
+  let savedEntry;
+  await githubUpdateFile(DATA_JS_PATH, (content) => {
+    const { tracks, media } = parseDataJs(content);
+    if (tracks.some((t) => t.file === fname)) {
+      throw new Error(`이미 같은 이름(${fname})의 경로가 있습니다.`);
+    }
+    savedEntry = { id: nextTrackId(tracks), ...trackWithoutId };
+    tracks.push(savedEntry);
+    return buildDataJs(tracks, media);
+  }, `Add FIT track ${fname}`);
+  return savedEntry;
 }
 
 async function commitYoutubeMapEntry(basename, videoId) {
-  const { content, sha } = await githubGetFile(YOUTUBE_MAP_PATH);
-  const m = content.match(/const YOUTUBE_MAP = (\{.*\});/s);
-  const map = JSON.parse(m[1]);
-  map[basename] = videoId;
-  const newContent = `const YOUTUBE_MAP = ${JSON.stringify(map, null, 2)};\n`;
-  await githubPutFile(YOUTUBE_MAP_PATH, newContent, sha, `Add YouTube ID for ${basename}`);
+  await githubUpdateFile(YOUTUBE_MAP_PATH, (content) => {
+    const m = content.match(/const YOUTUBE_MAP = (\{.*\});/s);
+    const map = JSON.parse(m[1]);
+    map[basename] = videoId;
+    return `const YOUTUBE_MAP = ${JSON.stringify(map, null, 2)};\n`;
+  }, `Add YouTube ID for ${basename}`);
 }
 
 async function deleteMedia(media) {
   const label = getBasename(media);
   if (!confirm(`"${label}" 마커를 삭제하시겠습니까?\n지도에서 마커가 사라집니다.`)) return;
 
-  // Remove from data.js
-  const { content: dataContent, sha: dataSha } = await githubGetFile(DATA_JS_PATH);
-  const { tracks, media: mediaList } = parseDataJs(dataContent);
-  const newMediaList = mediaList.filter((m) => m.id !== media.id);
-  if (newMediaList.length === mediaList.length) {
-    throw new Error(`data.js에서 id "${media.id}" 항목을 찾지 못했습니다.`);
-  }
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, newMediaList), dataSha, `Remove media marker ${label}`);
+  const mediaId = media.id;
+  await githubUpdateFile(DATA_JS_PATH, (content) => {
+    const { tracks, media: mediaList } = parseDataJs(content);
+    const newMediaList = mediaList.filter((m) => m.id !== mediaId);
+    if (newMediaList.length === mediaList.length) {
+      throw new Error(`data.js에서 id "${mediaId}" 항목을 찾지 못했습니다.`);
+    }
+    return buildDataJs(tracks, newMediaList);
+  }, `Remove media marker ${label}`);
 
   // youtube_map.js cleanup: only for manually-placed yt_* markers
   const basename = getBasename(media);
   if (basename.startsWith('yt_')) {
     try {
-      const { content: ytContent, sha: ytSha } = await githubGetFile(YOUTUBE_MAP_PATH);
-      const m = ytContent.match(/const YOUTUBE_MAP = (\{.*\});/s);
-      const ytMap = JSON.parse(m[1]);
-      delete ytMap[basename];
-      const newYtContent = `const YOUTUBE_MAP = ${JSON.stringify(ytMap, null, 2)};\n`;
-      await githubPutFile(YOUTUBE_MAP_PATH, newYtContent, ytSha, `Remove YouTube entry for ${basename}`);
+      await githubUpdateFile(YOUTUBE_MAP_PATH, (content) => {
+        const m = content.match(/const YOUTUBE_MAP = (\{.*\});/s);
+        const ytMap = JSON.parse(m[1]);
+        delete ytMap[basename];
+        return `const YOUTUBE_MAP = ${JSON.stringify(ytMap, null, 2)};\n`;
+      }, `Remove YouTube entry for ${basename}`);
     } catch (_) { /* youtube_map.js 정리 실패해도 마커 삭제는 완료 */ }
   }
 
@@ -801,12 +806,14 @@ function renderTrackRows(country) {
 }
 
 async function renameTrack(track, newFile) {
-  const { content, sha } = await githubGetFile(DATA_JS_PATH);
-  const { tracks, media } = parseDataJs(content);
-  const t = tracks.find((t) => t.id === track.id);
-  if (!t) throw new Error('트랙을 찾을 수 없습니다.');
-  t.file = newFile;
-  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Rename FIT track to ${newFile}`);
+  const trackId = track.id;
+  await githubUpdateFile(DATA_JS_PATH, (content) => {
+    const { tracks, media } = parseDataJs(content);
+    const t = tracks.find((t) => t.id === trackId);
+    if (!t) throw new Error('트랙을 찾을 수 없습니다.');
+    t.file = newFile;
+    return buildDataJs(tracks, media);
+  }, `Rename FIT track to ${newFile}`);
   track.file = newFile;
 }
 
@@ -859,10 +866,11 @@ function startTrackRename(track, nameSpan) {
 async function deleteTrack(track) {
   if (!confirm(`"${track.file}" 경로를 삭제하시겠습니까?\n지도에서 경로선이 사라집니다. (마커 위치는 유지됩니다.)`)) return;
   try {
-    const { content, sha } = await githubGetFile(DATA_JS_PATH);
-    const { tracks, media } = parseDataJs(content);
-    const newTracks = tracks.filter((t) => t.id !== track.id);
-    await githubPutFile(DATA_JS_PATH, buildDataJs(newTracks, media), sha, `Remove FIT track ${track.file}`);
+    const trackId = track.id;
+    await githubUpdateFile(DATA_JS_PATH, (content) => {
+      const { tracks, media } = parseDataJs(content);
+      return buildDataJs(tracks.filter((t) => t.id !== trackId), media);
+    }, `Remove FIT track ${track.file}`);
 
     const idx = TRACKS.findIndex((t) => t.id === track.id);
     if (idx !== -1) TRACKS.splice(idx, 1);

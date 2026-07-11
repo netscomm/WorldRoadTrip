@@ -47,24 +47,24 @@ async function githubGetFile(path) {
   const pat = await getPAT();
   const res = await fetch(
     `https://api.github.com/repos/${GITHUB_REPO}/contents/${path}?ref=${GITHUB_BRANCH}`,
-    { headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github+json" } }
+    {
+      headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github+json" },
+      cache: 'no-store',
+    }
   );
   if (!res.ok) {
     if (res.status === 401) { cachedPAT = null; localStorage.removeItem(PAT_STORAGE_KEY); }
     throw new Error(`GitHub API 오류 (${res.status}): ${path} 조회 실패`);
   }
   const data = await res.json();
-  // The Contents API only inlines base64 content in the GET response for
-  // files under 1MB; data.js is well past that, so fall back to the raw
-  // file for anything larger (data.encoding === "none" in that case). The
-  // sha is still present either way and PUT itself has no such size limit.
   if (data.encoding === "none" || !data.content) {
-    // Use the Git Blobs API (authenticated, sha-pinned) instead of
-    // raw.githubusercontent.com which has CDN caching and can return
-    // stale content right after a commit.
+    // Git Blobs API: authenticated + sha-pinned, no CDN caching issues.
     const blobRes = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/git/blobs/${data.sha}`,
-      { headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github.raw+json" } }
+      {
+        headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github.raw+json" },
+        cache: 'no-store',
+      }
     );
     if (!blobRes.ok) {
       throw new Error(`GitHub blob 콘텐츠 조회 실패 (${blobRes.status}): ${path}`);
@@ -74,6 +74,33 @@ async function githubGetFile(path) {
   return { content: base64ToUtf8(data.content), sha: data.sha };
 }
 
+// Wraps a read-modify-write on a single file with one automatic retry on
+// SHA conflict (409). Each attempt re-reads the file for a fresh SHA so a
+// concurrent write or a cached-response mismatch resolves itself.
+async function githubUpdateFile(path, transform, message) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { content, sha } = await githubGetFile(path);
+    const newContent = transform(content);
+    const pat = await getPAT();
+    const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `token ${pat}`,
+        Accept: "application/vnd.github+json",
+        "Content-Type": "application/json",
+      },
+      cache: 'no-store',
+      body: JSON.stringify({ message, content: utf8ToBase64(newContent), sha, branch: GITHUB_BRANCH }),
+    });
+    if (res.ok) return res.json();
+    if (res.status === 409 && attempt === 0) continue; // retry once with fresh SHA
+    if (res.status === 401) { cachedPAT = null; localStorage.removeItem(PAT_STORAGE_KEY); }
+    const body = await res.json().catch(() => ({}));
+    throw new Error(`GitHub API 오류 (${res.status}): ${body.message || path + " 커밋 실패"}`);
+  }
+}
+
+// Legacy single-shot PUT (used when caller already has a fresh sha)
 async function githubPutFile(path, newContent, sha, message) {
   const pat = await getPAT();
   const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`, {
@@ -83,12 +110,8 @@ async function githubPutFile(path, newContent, sha, message) {
       Accept: "application/vnd.github+json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      message,
-      content: utf8ToBase64(newContent),
-      sha,
-      branch: GITHUB_BRANCH,
-    }),
+    cache: 'no-store',
+    body: JSON.stringify({ message, content: utf8ToBase64(newContent), sha, branch: GITHUB_BRANCH }),
   });
   if (!res.ok) {
     if (res.status === 401) { cachedPAT = null; localStorage.removeItem(PAT_STORAGE_KEY); }
