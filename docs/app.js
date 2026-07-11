@@ -786,6 +786,7 @@ function renderTrackRows(country) {
     nameSpan.addEventListener('click', () => map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] }));
     nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
     nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
+    nameSpan.addEventListener('dblclick', (e) => { e.stopPropagation(); startTrackRename(track, nameSpan); });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'track-del-btn';
@@ -797,6 +798,62 @@ function renderTrackRows(country) {
     row.appendChild(delBtn);
     legendTracksEl.appendChild(row);
   });
+}
+
+async function renameTrack(track, newFile) {
+  const { content, sha } = await githubGetFile(DATA_JS_PATH);
+  const { tracks, media } = parseDataJs(content);
+  const t = tracks.find((t) => t.id === track.id);
+  if (!t) throw new Error('트랙을 찾을 수 없습니다.');
+  t.file = newFile;
+  await githubPutFile(DATA_JS_PATH, buildDataJs(tracks, media), sha, `Rename FIT track to ${newFile}`);
+  track.file = newFile;
+}
+
+function startTrackRename(track, nameSpan) {
+  const swatchEl = nameSpan.querySelector('.swatch').cloneNode(true);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = track.file;
+  input.className = 'track-title-input';
+  input.style.flex = '1';
+
+  nameSpan.innerHTML = '';
+  nameSpan.style.cursor = 'default';
+  nameSpan.appendChild(swatchEl);
+  nameSpan.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  async function save() {
+    if (done) return;
+    done = true;
+    const newFile = input.value.trim();
+    if (!newFile || newFile === track.file) { renderTrackRows(activeCountry); return; }
+    input.disabled = true;
+    try {
+      await renameTrack(track, newFile);
+    } catch (e) {
+      alert(`이름 변경 실패: ${e.message}`);
+    }
+    renderTrackRows(activeCountry);
+  }
+
+  function cancel() {
+    if (done) return;
+    done = true;
+    renderTrackRows(activeCountry);
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); save(); }
+    else if (e.key === 'Escape') cancel();
+    e.stopPropagation();
+  });
+  input.addEventListener('blur', save);
 }
 
 async function deleteTrack(track) {

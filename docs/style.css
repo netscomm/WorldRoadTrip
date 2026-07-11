@@ -628,6 +628,11 @@ html, body {
 .fit-time-tooltip::before { display: none; }
 
 /* FIT 트랙 삭제 버튼 */
+.track-rename-active {
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 4px;
+}
+
 .track-del-btn {
   background: none;
   border: none;
