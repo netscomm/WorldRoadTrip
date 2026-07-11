@@ -334,5 +334,6 @@ const YOUTUBE_MAP = {
   "DJI_20260611113504_0424_D.MP4": "AWpWpjkA3-8",
   "DJI_20260612094106_0453_D.MP4": "NDwTYiYRWYk",
   "DJI_20260607195933_0295_D.MP4": "tHYo5MsKPiI",
-  "yt_cUjzH7ksKUI": "cUjzH7ksKUI"
+  "yt_cUjzH7ksKUI": "cUjzH7ksKUI",
+  "yt_vAcWRSqb-YE": "vAcWRSqb-YE"
 };
