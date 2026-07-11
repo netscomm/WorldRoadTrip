@@ -733,6 +733,32 @@ const legendTracksEl = document.createElement('div');
 legendTracksEl.id = 'legend-tracks';
 legendBodyEl.appendChild(legendTracksEl);
 
+// ── FIT 작업 진행 중 상태 관리 ─────────────────────────────────────────
+let fitBusy = false;
+let _fitBusyOverlay = null;
+
+function setFitBusy(busy, message) {
+  fitBusy = busy;
+  const legendEl = document.getElementById('legend');
+  if (busy) {
+    if (!_fitBusyOverlay) {
+      _fitBusyOverlay = document.createElement('div');
+      _fitBusyOverlay.className = 'fit-busy-overlay';
+      const spinner = document.createElement('div');
+      spinner.className = 'fit-busy-spinner';
+      const text = document.createElement('span');
+      _fitBusyOverlay.appendChild(spinner);
+      _fitBusyOverlay.appendChild(text);
+    }
+    _fitBusyOverlay.querySelector('span').textContent = message || '저장 중...';
+    legendEl.appendChild(_fitBusyOverlay);
+  } else {
+    if (_fitBusyOverlay && _fitBusyOverlay.parentNode) {
+      _fitBusyOverlay.parentNode.removeChild(_fitBusyOverlay);
+    }
+  }
+}
+
 // ── FIT drag-and-drop onto track list ──────────────────────────────────
 let _fitDragCount = 0;
 legendTracksEl.addEventListener('dragenter', (e) => {
@@ -753,6 +779,7 @@ legendTracksEl.addEventListener('drop', (e) => {
   e.preventDefault();
   _fitDragCount = 0;
   legendTracksEl.classList.remove('fit-drop-active');
+  if (fitBusy) return;
   const file = [...e.dataTransfer.files].find((f) => f.name.toLowerCase().endsWith('.fit'));
   if (!file) { alert('.fit 파일만 추가할 수 있습니다.'); return; }
   const title = file.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]/g, '_');
@@ -791,13 +818,17 @@ function renderTrackRows(country) {
     nameSpan.addEventListener('click', () => map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] }));
     nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
     nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
-    nameSpan.addEventListener('dblclick', (e) => { e.stopPropagation(); startTrackRename(track, nameSpan); });
+    nameSpan.addEventListener('dblclick', (e) => {
+      if (fitBusy) return;
+      e.stopPropagation();
+      startTrackRename(track, nameSpan);
+    });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'track-del-btn';
     delBtn.textContent = '×';
     delBtn.title = '이 경로 삭제';
-    delBtn.addEventListener('click', () => deleteTrack(track));
+    delBtn.addEventListener('click', () => { if (!fitBusy) deleteTrack(track); });
 
     row.appendChild(nameSpan);
     row.appendChild(delBtn);
@@ -841,11 +872,13 @@ function startTrackRename(track, nameSpan) {
     const newFile = input.value.trim();
     if (!newFile || newFile === track.file) { renderTrackRows(activeCountry); return; }
     input.disabled = true;
+    setFitBusy(true, '이름 변경 중...');
     try {
       await renameTrack(track, newFile);
     } catch (e) {
       alert(`이름 변경 실패: ${e.message}`);
     }
+    setFitBusy(false);
     renderTrackRows(activeCountry);
   }
 
@@ -865,6 +898,7 @@ function startTrackRename(track, nameSpan) {
 
 async function deleteTrack(track) {
   if (!confirm(`"${track.file}" 경로를 삭제하시겠습니까?\n지도에서 경로선이 사라집니다. (마커 위치는 유지됩니다.)`)) return;
+  setFitBusy(true, '삭제 중...');
   try {
     const trackId = track.id;
     await githubUpdateFile(DATA_JS_PATH, (content) => {
@@ -888,10 +922,12 @@ async function deleteTrack(track) {
       }
     }
 
+    setFitBusy(false);
     renderCountryTabs();
     if (activeCountry) renderTrackRows(activeCountry);
     else legendTracksEl.innerHTML = '';
   } catch (e) {
+    setFitBusy(false);
     alert(`삭제 실패: ${e.message}`);
   }
 }
@@ -1196,11 +1232,13 @@ function addTrackToMap(track) {
 }
 
 async function uploadTrackFile(file, title, btn, progressWrap) {
+  setFitBusy(true, 'FIT 파싱 중...');
   btn.disabled = true;
   btn.textContent = '추가 중...';
   progressWrap.classList.remove('hidden');
 
   const fail = (message) => {
+    setFitBusy(false);
     btn.disabled = false;
     btn.textContent = 'FIT 경로 추가';
     progressWrap.classList.add('hidden');
@@ -1219,6 +1257,7 @@ async function uploadTrackFile(file, title, btn, progressWrap) {
     const safeTitle = title.replace(/[<>:"/\\|?*]/g, '_');
     const fname = `${dateStr}_${safeTitle}.fit`;
 
+    setFitBusy(true, 'GitHub에 저장 중...');
     const track = await commitNewTrack(fname, {
       file: fname,
       color: PALETTE[TRACKS.length % PALETTE.length],
@@ -1234,6 +1273,7 @@ async function uploadTrackFile(file, title, btn, progressWrap) {
     btn.disabled = false;
     btn.textContent = 'FIT 경로 추가';
     progressWrap.classList.add('hidden');
+    setFitBusy(false);
   } catch (e) {
     fail(e.message);
   }

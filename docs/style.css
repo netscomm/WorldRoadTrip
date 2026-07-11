@@ -134,6 +134,7 @@ html, body {
   font-size: 12px;
   z-index: 1000;
   max-width: 260px;
+  overflow: hidden;
 }
 
 #legend .legend-title {
@@ -631,6 +632,36 @@ html, body {
 .track-rename-active {
   background: rgba(0, 0, 0, 0.06);
   border-radius: 4px;
+}
+
+/* ── FIT 작업 진행 중 오버레이 ── */
+.fit-busy-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #333;
+  z-index: 1001;
+  cursor: wait;
+}
+
+.fit-busy-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ddd;
+  border-top-color: #555;
+  border-radius: 50%;
+  animation: fit-spin 0.6s linear infinite;
+  flex: none;
+}
+
+@keyframes fit-spin {
+  to { transform: rotate(360deg); }
 }
 
 .track-del-btn {
