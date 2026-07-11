@@ -437,35 +437,6 @@ html, body {
 }
 
 @media (max-width: 600px) {
-  #legend {
-    max-width: 46vw;
-    font-size: 10px;
-    padding: 6px 8px;
-  }
-
-  #legend-tracks {
-    max-height: 18vh;
-  }
-
-  #legend .row {
-    gap: 4px;
-    margin: 1px 0;
-  }
-
-  #legend .swatch {
-    width: 9px;
-    height: 9px;
-  }
-
-  #legend .legend-title {
-    margin-bottom: 2px;
-  }
-
-  .country-tab {
-    font-size: 9px;
-    padding: 1px 5px;
-  }
-
   #panel {
     left: 0;
     right: 0;
@@ -477,6 +448,56 @@ html, body {
   #panel-media video,
   #panel-media img {
     max-height: 40vh;
+  }
+}
+
+/* ── 모바일 세로 (portrait): 하단 1/3 FIT 패널 ── */
+@media (max-width: 600px) and (orientation: portrait) {
+  #legend:not(.collapsed) {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    max-width: 100%;
+    width: 100%;
+    height: 33vh;
+    border-radius: 14px 14px 0 0;
+    padding: 10px 12px 8px;
+    overflow-y: auto;
+    box-shadow: 0 -3px 16px rgba(0,0,0,0.2);
+  }
+  #legend:not(.collapsed) #legend-tracks {
+    max-height: calc(33vh - 90px);
+  }
+  #legend.collapsed {
+    left: 8px;
+    bottom: 8px;
+    max-width: 160px;
+  }
+}
+
+/* ── 모바일 가로 (landscape): 좌측 1/3 FIT 패널 ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  #legend:not(.collapsed) {
+    left: 0;
+    top: 0;
+    bottom: 0;
+    right: auto;
+    width: 33vw;
+    max-width: 33vw;
+    height: 100%;
+    border-radius: 0 10px 10px 0;
+    padding: 8px 10px;
+    overflow-y: auto;
+    box-shadow: 3px 0 16px rgba(0,0,0,0.2);
+  }
+  #legend:not(.collapsed) #legend-tracks {
+    max-height: calc(100vh - 110px);
+  }
+  #legend.collapsed {
+    left: 8px;
+    bottom: 8px;
+    max-width: 130px;
   }
 }
 
@@ -664,20 +685,23 @@ html, body {
   to { transform: rotate(360deg); }
 }
 
+.track-link-btn,
 .track-rename-btn {
   background: none;
   border: none;
   color: #888;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   padding: 0 2px;
   flex: none;
   line-height: 1;
-  margin-left: auto;
   opacity: 0;
   transition: opacity 0.15s;
 }
+.track-link-btn { margin-left: auto; }
+.row:hover .track-link-btn,
 .row:hover .track-rename-btn { opacity: 1; }
+.track-link-btn:hover,
 .track-rename-btn:hover { color: #333; }
 
 .track-del-btn {

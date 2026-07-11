@@ -691,7 +691,17 @@ MEDIA.forEach((media) => {
   allBounds.push([media.lat, media.lon]);
 });
 
-if (allBounds.length) {
+const _focusTrackId = new URLSearchParams(window.location.search).get('track');
+if (_focusTrackId) {
+  const _ft = TRACKS.find((t) => t.id === _focusTrackId);
+  if (_ft && trackLatLngs[_ft.id]) {
+    map.fitBounds(trackLatLngs[_ft.id], { padding: [30, 30] });
+  } else if (allBounds.length) {
+    map.fitBounds(allBounds, { padding: [20, 20] });
+  } else {
+    map.setView([46.4, 11.3], 9);
+  }
+} else if (allBounds.length) {
   map.fitBounds(allBounds, { padding: [20, 20] });
 } else {
   map.setView([46.4, 11.3], 9);
@@ -819,6 +829,20 @@ function renderTrackRows(country) {
     nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
     nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
 
+    const linkBtn = document.createElement('button');
+    linkBtn.className = 'track-link-btn';
+    linkBtn.textContent = '⛓';
+    linkBtn.title = '공유 링크 복사';
+    linkBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const url = new URL(window.location.href);
+      url.searchParams.set('track', track.id);
+      (navigator.clipboard || { writeText: () => Promise.reject() })
+        .writeText(url.toString())
+        .then(() => { linkBtn.textContent = '✓'; setTimeout(() => { linkBtn.textContent = '⛓'; }, 1500); })
+        .catch(() => { prompt('링크를 복사하세요:', url.toString()); });
+    });
+
     const renameBtn = document.createElement('button');
     renameBtn.className = 'track-rename-btn';
     renameBtn.textContent = '✎';
@@ -835,6 +859,7 @@ function renderTrackRows(country) {
     delBtn.addEventListener('click', () => { if (!fitBusy) deleteTrack(track); });
 
     row.appendChild(nameSpan);
+    row.appendChild(linkBtn);
     row.appendChild(renameBtn);
     row.appendChild(delBtn);
     legendTracksEl.appendChild(row);
