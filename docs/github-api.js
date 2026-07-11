@@ -59,11 +59,17 @@ async function githubGetFile(path) {
   // file for anything larger (data.encoding === "none" in that case). The
   // sha is still present either way and PUT itself has no such size limit.
   if (data.encoding === "none" || !data.content) {
-    const rawRes = await fetch(`https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${path}`);
-    if (!rawRes.ok) {
-      throw new Error(`GitHub raw 콘텐츠 조회 실패 (${rawRes.status}): ${path}`);
+    // Use the Git Blobs API (authenticated, sha-pinned) instead of
+    // raw.githubusercontent.com which has CDN caching and can return
+    // stale content right after a commit.
+    const blobRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO}/git/blobs/${data.sha}`,
+      { headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github.raw+json" } }
+    );
+    if (!blobRes.ok) {
+      throw new Error(`GitHub blob 콘텐츠 조회 실패 (${blobRes.status}): ${path}`);
     }
-    return { content: await rawRes.text(), sha: data.sha };
+    return { content: await blobRes.text(), sha: data.sha };
   }
   return { content: base64ToUtf8(data.content), sha: data.sha };
 }
