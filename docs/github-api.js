@@ -1,13 +1,8 @@
-// Commits changes directly to the repo from the browser via GitHub's
-// Contents API, replacing the old flow of "local server writes data.js ->
-// someone runs git push by hand". The PAT is only ever held in memory for
-// the current page load (never localStorage/cookies) - the user re-enters
-// it each session when first needed.
-
 const GITHUB_REPO = "netscomm/WorldRoadTrip";
 const GITHUB_BRANCH = "main";
+const PAT_STORAGE_KEY = "gh_pat_worldroadtrip";
 
-let cachedPAT = null;
+let cachedPAT = localStorage.getItem(PAT_STORAGE_KEY) || null;
 let _patResolve = null;
 let _patReject = null;
 
@@ -26,7 +21,7 @@ function _showPatModal() {
     const modal = document.getElementById("pat-modal");
     const input = document.getElementById("pat-modal-input");
     modal.classList.remove("hidden");
-    input.value = "";
+    input.value = cachedPAT || "";
     input.focus();
   });
 }
@@ -36,6 +31,7 @@ async function getPAT() {
   const token = await _showPatModal();
   if (!token || !token.trim()) throw new Error("GitHub 토큰이 필요합니다.");
   cachedPAT = token.trim();
+  localStorage.setItem(PAT_STORAGE_KEY, cachedPAT);
   return cachedPAT;
 }
 
@@ -54,6 +50,7 @@ async function githubGetFile(path) {
     { headers: { Authorization: `token ${pat}`, Accept: "application/vnd.github+json" } }
   );
   if (!res.ok) {
+    if (res.status === 401) { cachedPAT = null; localStorage.removeItem(PAT_STORAGE_KEY); }
     throw new Error(`GitHub API 오류 (${res.status}): ${path} 조회 실패`);
   }
   const data = await res.json();
@@ -88,6 +85,7 @@ async function githubPutFile(path, newContent, sha, message) {
     }),
   });
   if (!res.ok) {
+    if (res.status === 401) { cachedPAT = null; localStorage.removeItem(PAT_STORAGE_KEY); }
     const body = await res.json().catch(() => ({}));
     throw new Error(`GitHub API 오류 (${res.status}): ${body.message || path + " 커밋 실패"}`);
   }
