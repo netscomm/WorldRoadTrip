@@ -194,7 +194,7 @@ html, body {
 #legend-tracks.fit-drop-active::after {
   content: '.fit 파일 놓기';
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -523,10 +523,82 @@ html, body {
   }
 }
 
+/* ── JS 클래스 기반 모바일 레이아웃 (Samsung Internet 등 orientation media query 미지원 대응) ── */
+#legend.mobile-portrait:not(.collapsed) {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 40vh !important;
+  border-radius: 16px 16px 0 0 !important;
+  padding: 12px 14px 10px !important;
+  overflow-y: auto !important;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.2) !important;
+  font-size: 13px !important;
+}
+#legend.mobile-portrait:not(.collapsed) #legend-tracks {
+  max-height: calc(40vh - 100px) !important;
+}
+#legend.mobile-portrait:not(.collapsed) .country-tab {
+  font-size: 12px !important;
+  padding: 4px 10px !important;
+}
+#legend.mobile-portrait:not(.collapsed) .row {
+  margin: 3px 0 !important;
+  min-height: 28px !important;
+}
+#legend.mobile-portrait:not(.collapsed) .track-link-btn,
+#legend.mobile-portrait:not(.collapsed) .track-rename-btn,
+#legend.mobile-portrait:not(.collapsed) .track-del-btn {
+  opacity: 1 !important;
+  font-size: 15px !important;
+  padding: 0 4px !important;
+}
+#legend.mobile-portrait.collapsed {
+  position: fixed !important;
+  left: 8px !important;
+  bottom: 8px !important;
+  max-width: 180px !important;
+}
+
+#legend.mobile-landscape:not(.collapsed) {
+  position: fixed !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  right: auto !important;
+  width: 33vw !important;
+  max-width: 33vw !important;
+  height: 100% !important;
+  border-radius: 0 12px 12px 0 !important;
+  padding: 10px 12px !important;
+  overflow-y: auto !important;
+  box-shadow: 4px 0 20px rgba(0,0,0,0.2) !important;
+  font-size: 12px !important;
+}
+#legend.mobile-landscape:not(.collapsed) #legend-tracks {
+  max-height: calc(100vh - 120px) !important;
+}
+#legend.mobile-landscape:not(.collapsed) .track-link-btn,
+#legend.mobile-landscape:not(.collapsed) .track-rename-btn,
+#legend.mobile-landscape:not(.collapsed) .track-del-btn {
+  opacity: 1 !important;
+  padding: 0 4px !important;
+}
+#legend.mobile-landscape.collapsed {
+  position: fixed !important;
+  left: 8px !important;
+  bottom: 8px !important;
+  max-width: 130px !important;
+}
+
 /* ── GitHub PAT 입력 모달 ── */
 #pat-modal {
   position: fixed;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,0.6);
   z-index: 3000;
   display: flex;
@@ -680,7 +752,7 @@ html, body {
 /* ── FIT 작업 진행 중 오버레이 ── */
 .fit-busy-overlay {
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(255, 255, 255, 0.92);
   border-radius: 6px;
   display: flex;

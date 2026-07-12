@@ -729,11 +729,26 @@ function setLegendCollapsed(collapsed) {
   legendEl.classList.toggle('collapsed', collapsed);
   legendToggleBtn.textContent = collapsed ? '▸' : '▾';
   localStorage.setItem(LEGEND_COLLAPSED_KEY, collapsed ? '1' : '0');
+  applyMobileLayout();
 }
 legendToggleBtn.addEventListener('click', () => {
   setLegendCollapsed(!legendEl.classList.contains('collapsed'));
 });
 setLegendCollapsed(localStorage.getItem(LEGEND_COLLAPSED_KEY) === '1');
+
+// CSS orientation media query는 Samsung Internet 등에서 신뢰할 수 없어
+// window.innerWidth/Height로 직접 판단한 뒤 class를 붙인다.
+function applyMobileLayout() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  legendEl.classList.remove('mobile-portrait', 'mobile-landscape');
+  if (w <= 768 && h > w) legendEl.classList.add('mobile-portrait');
+  else if (h <= 560 && w > h) legendEl.classList.add('mobile-landscape');
+  setTimeout(() => map.invalidateSize(), 100);
+}
+window.addEventListener('resize', applyMobileLayout);
+window.addEventListener('orientationchange', () => setTimeout(applyMobileLayout, 300));
+applyMobileLayout();
 
 const legendCountryTabsEl = document.createElement('div');
 legendCountryTabsEl.id = 'legend-country-tabs';
