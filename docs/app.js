@@ -1095,11 +1095,6 @@ fileUploadInput.addEventListener('change', () => {
   fileUploadInput.value = '';
 });
 
-const trackTitleInput = document.createElement('input');
-trackTitleInput.type = 'text';
-trackTitleInput.placeholder = '경로 이름 (예: 알프듀에즈)';
-trackTitleInput.className = 'track-title-input';
-
 const trackFileInput = document.createElement('input');
 trackFileInput.type = 'file';
 trackFileInput.accept = '.fit';
@@ -1111,11 +1106,7 @@ const trackUploadBtn = document.createElement('button');
 trackUploadBtn.className = 'copy-btn';
 trackUploadBtn.textContent = 'FIT 경로 추가';
 trackUploadBtn.addEventListener('click', () => {
-  if (!trackTitleInput.value.trim()) {
-    alert('경로 이름을 먼저 입력해주세요.');
-    trackTitleInput.focus();
-    return;
-  }
+  if (fitBusy) return;
   trackFileInput.click();
 });
 
@@ -1128,7 +1119,6 @@ trackUploadProgressText.className = 'upload-progress-text';
 trackUploadProgressWrap.appendChild(trackUploadProgressBar);
 trackUploadProgressWrap.appendChild(trackUploadProgressText);
 
-trackUploadRow.appendChild(trackTitleInput);
 trackUploadRow.appendChild(trackUploadBtn);
 trackUploadRow.appendChild(trackFileInput);
 legendBodyEl.appendChild(trackUploadRow);
@@ -1137,7 +1127,8 @@ legendBodyEl.appendChild(trackUploadProgressWrap);
 trackFileInput.addEventListener('change', () => {
   const file = trackFileInput.files[0];
   if (!file) return;
-  uploadTrackFile(file, trackTitleInput.value.trim(), trackUploadBtn, trackUploadProgressWrap);
+  const title = file.name.replace(/\.[^.]+$/, '').replace(/[<>:"/\\|?*]/g, '_');
+  uploadTrackFile(file, title, trackUploadBtn, trackUploadProgressWrap);
   trackFileInput.value = '';
 });
 
@@ -1314,7 +1305,6 @@ async function uploadTrackFile(file, title, btn, progressWrap) {
     });
     addTrackToMap(track);
 
-    trackTitleInput.value = '';
     btn.disabled = false;
     btn.textContent = 'FIT 경로 추가';
     progressWrap.classList.add('hidden');
