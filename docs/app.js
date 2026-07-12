@@ -838,8 +838,8 @@ function renderTrackRows(country) {
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'clickable';
-    nameSpan.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;cursor:pointer';
-    nameSpan.innerHTML = `<span class="swatch" style="background:${track.color}"></span>${track.file}`;
+    nameSpan.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;min-width:0;cursor:pointer;overflow:hidden';
+    nameSpan.innerHTML = `<span class="swatch" style="background:${track.color};flex:none"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${track.file}</span>`;
     nameSpan.addEventListener('click', () => map.fitBounds(trackLatLngs[track.id], { padding: [20, 20] }));
     nameSpan.addEventListener('mouseover', () => { row.style.background = 'rgba(0,0,0,0.08)'; });
     nameSpan.addEventListener('mouseout', () => { row.style.background = ''; });
